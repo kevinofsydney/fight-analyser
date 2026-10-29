@@ -31,7 +31,7 @@ services:
     command:
       - sh
       - -c
-      - "[ -f /data/fightdb.duckdb ] || fightdb -v backfill; exec supercronic /app/deploy/crontab"
+      - "[ -f /data/fightdb.duckdb ] || fightdb -v backfill; exec /usr/local/bin/supercronic /app/deploy/crontab"
     healthcheck:
       disable: true
 
