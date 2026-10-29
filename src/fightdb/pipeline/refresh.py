@@ -19,7 +19,7 @@ from typing import Any
 import duckdb
 import httpx
 
-from fightdb import notify
+from fightdb import errorlog, notify
 from fightdb.config import Settings
 from fightdb.db.conn import init_db
 from fightdb.pipeline import backfill, build, upcoming
@@ -59,53 +59,67 @@ def run_refresh(
     report: dict[str, Any] = {"run_id": run_id, "kind": kind, "warnings": [], "counts": {}}
     own_client = client is None
     client = client or http.make_client()
-    try:
-        con = duckdb.connect(str(tmp_path))
+    with errorlog.context(run_id=run_id, kind=kind):
         try:
-            init_db(con)
-            if history:
-                stored = _completed_bouts(con)
-                bundle, counts, warns = backfill.import_history(con, settings, client, source, file)
-                report.update(source=bundle.source, source_version=bundle.source_version)
-                report["counts"].update(counts)
-                report["warnings"] += warns
-                # Upserts never delete, so a truncated upstream file cannot lose data, but it is a
-                # sign the source is broken and worth surfacing.
-                if stored and len(bundle.bouts) < 0.98 * stored:
-                    report["warnings"].append(
-                        f"{bundle.source} returned {len(bundle.bouts)} completed bouts; we already had {stored}"
+            con = duckdb.connect(str(tmp_path))
+            try:
+                init_db(con)
+                if history:
+                    stored = _completed_bouts(con)
+                    bundle, counts, warns = backfill.import_history(
+                        con, settings, client, source, file
                     )
-            if cards:
-                try:
-                    events = (fetch_upcoming or _fetch_espn)(client, today)
-                    res = upcoming.ingest_upcoming(
-                        con, events, today, settings.overrides_dir / "fighter_identity.yaml", run_id
-                    )
-                    report["counts"].update(upcoming_events=res.events, upcoming_bouts=res.bouts)
-                    report["unmatched"] = res.unmatched
-                    report["card_changes"] = res.changes
-                except Exception as exc:  # noqa: BLE001 - the history import is still worth keeping
-                    log.exception("upcoming cards failed")
-                    report["warnings"].append(f"upcoming cards failed: {exc}")
-            if not _completed_bouts(con):
-                raise RuntimeError("database has no completed bouts; run a backfill first")
-            report["counts"].update(build.build_all(con, train_models=train_models))
-            max_date = con.execute(
-                "SELECT max(date) FROM events WHERE status = 'completed'"
-            ).fetchone()[0]  # type: ignore[index]
-            _write_run(con, report, started, "warning" if report["warnings"] else "ok", max_date)
-            con.execute("CHECKPOINT")
+                    report.update(source=bundle.source, source_version=bundle.source_version)
+                    report["counts"].update(counts)
+                    report["warnings"] += warns
+                    # Upserts never delete, so a truncated upstream file cannot lose data, but it is a
+                    # sign the source is broken and worth surfacing.
+                    if stored and len(bundle.bouts) < 0.98 * stored:
+                        report["warnings"].append(
+                            f"{bundle.source} returned {len(bundle.bouts)} completed bouts; we already had {stored}"
+                        )
+                        log.warning(report["warnings"][-1])
+                if cards:
+                    try:
+                        events = (fetch_upcoming or _fetch_espn)(client, today)
+                        res = upcoming.ingest_upcoming(
+                            con,
+                            events,
+                            today,
+                            settings.overrides_dir / "fighter_identity.yaml",
+                            run_id,
+                        )
+                        report["counts"].update(
+                            upcoming_events=res.events, upcoming_bouts=res.bouts
+                        )
+                        report["unmatched"] = res.unmatched
+                        report["card_changes"] = res.changes
+                    except Exception as exc:  # noqa: BLE001 - the history import is still worth keeping
+                        log.exception("upcoming cards failed")
+                        report["warnings"].append(f"upcoming cards failed: {exc}")
+                if not _completed_bouts(con):
+                    raise RuntimeError("database has no completed bouts; run a backfill first")
+                report["counts"].update(build.build_all(con, train_models=train_models))
+                max_date = con.execute(
+                    "SELECT max(date) FROM events WHERE status = 'completed'"
+                ).fetchone()[0]  # type: ignore[index]
+                _write_run(
+                    con, report, started, "warning" if report["warnings"] else "ok", max_date
+                )
+                con.execute("CHECKPOINT")
+            finally:
+                con.close()
+            os.replace(tmp_path, db_path)
+        except Exception as exc:
+            tmp_path.unlink(missing_ok=True)
+            report["error"] = str(exc)
+            _record_failure(db_path, report, started)
+            log.exception("%s %s failed", kind, run_id)
+            errorlog.mark_logged(exc)
+            raise
         finally:
-            con.close()
-        os.replace(tmp_path, db_path)
-    except Exception as exc:
-        tmp_path.unlink(missing_ok=True)
-        report["error"] = str(exc)
-        _record_failure(db_path, report, started)
-        raise
-    finally:
-        if own_client:
-            client.close()
+            if own_client:
+                client.close()
 
     if report.get("card_changes"):
         notify.notify_card_changes(settings.discord_webhook_url, report["card_changes"])

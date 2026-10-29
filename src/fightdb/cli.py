@@ -11,7 +11,10 @@ from typing import Annotated
 
 import typer
 
+from fightdb import errorlog
 from fightdb.config import get_settings
+
+log = logging.getLogger("fightdb.cli")
 
 app = typer.Typer(
     help="Fight Analyser: UFC database, hypothesis lab and matchup projections.",
@@ -31,6 +34,7 @@ def _main(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) -> 
         level=logging.INFO if verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
+    errorlog.install("cli")
 
 
 def _print(obj: object) -> None:
@@ -175,5 +179,56 @@ def model_eval() -> None:
     typer.echo(df.to_string(index=False))
 
 
+@app.command()
+def errors(
+    since: Annotated[
+        str | None,
+        typer.Option(help="Only entries at or after this ISO date/time, e.g. 2026-10-29"),
+    ] = None,
+    raw: Annotated[
+        bool, typer.Option("--json", help="Print raw entries, one JSON per line")
+    ] = False,
+    full: Annotated[
+        bool, typer.Option("--full", help="Include the latest traceback per error")
+    ] = False,
+) -> None:
+    """Show logged errors, grouped by cause (newest first). Start here when something broke."""
+    entries = errorlog.read_entries(Path(get_settings().log_dir))
+    if since:
+        entries = [e for e in entries if e.get("ts", "") >= since]
+    if raw:
+        for e in entries:
+            typer.echo(json.dumps(e, default=str))
+        return
+    if not entries:
+        typer.echo(f"No errors logged in {get_settings().log_dir}.")
+        return
+    for g in errorlog.summarise(entries):
+        e = g["latest"]
+        what = f"{e['exc_type']}: {e['exc_message']}" if e.get("exc_type") else e["message"]
+        typer.echo(
+            f"[{g['fingerprint']}] x{g['count']}  last {g['last_seen']}  first {g['first_seen']}\n"
+            f"  {e['process']} {e.get('context') or ''}\n  {what}\n  at {e.get('origin')}"
+        )
+        if full and e.get("traceback"):
+            typer.echo("  " + e["traceback"].rstrip().replace("\n", "\n  "))
+        typer.echo("")
+
+
+def main() -> None:
+    """Console entry point: records any uncaught exception in the error log, then re-raises."""
+    command = next((a for a in sys.argv[1:] if not a.startswith("-")), None)
+    with errorlog.context(command=command):
+        try:
+            app()
+        except SystemExit:
+            raise
+        except BaseException as exc:
+            if not errorlog.was_logged(exc):
+                errorlog.install("cli")
+                log.exception("uncaught exception in `fightdb %s`", command)
+            raise
+
+
 if __name__ == "__main__":
-    app()
+    main()

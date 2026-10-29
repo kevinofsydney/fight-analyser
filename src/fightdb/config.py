@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     db_path: Path = Path("data/fightdb.duckdb")
     download_dir: Path = Path("data/sources")
+    log_dir: Path = Path("data/logs")
     overrides_dir: Path = Path("data/overrides")
     hypotheses_dir: Path = Path("hypotheses")
 

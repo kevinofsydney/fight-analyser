@@ -15,6 +15,24 @@ from fightdb.sources.models import Bout, Event, Fighter, HistoryBundle, RoundSta
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_error_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep tests from writing into the real data/logs error log."""
+    import logging
+
+    from fightdb.config import get_settings
+    from fightdb.errorlog import JsonErrorHandler
+
+    monkeypatch.setenv("LOG_DIR", str(tmp_path / "logs"))
+    get_settings.cache_clear()
+    yield
+    for lg in (logging.getLogger(), logging.getLogger("streamlit.error_util")):
+        for h in [h for h in lg.handlers if isinstance(h, JsonErrorHandler)]:
+            lg.removeHandler(h)
+            h.close()
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def con() -> Iterator[duckdb.DuckDBPyConnection]:
     c = duckdb.connect(":memory:")

@@ -30,6 +30,18 @@ Rules for every coding agent (Claude, Codex, DS Flash 1017, others) and human wo
 | `make app` | Run the Streamlit app at localhost:8501 |
 | `make fixtures` | Rebuild small test fixtures from the live sources |
 | `make docker-up` / `make docker-down` | Homelab stack |
+| `make errors` | Logged errors, grouped by cause, with the latest traceback |
+
+## Fixing errors
+Every warning, error and uncaught exception (CLI, daily refresh, app pages) is appended as one JSON line to `$LOG_DIR/errors.<process>.jsonl` (default `data/logs/`, `/data/logs/` in Docker). Start with:
+
+```bash
+make errors                                   # or: fightdb errors --full
+fightdb errors --json --since 2026-10-29      # raw entries
+docker compose exec refresher fightdb errors --full   # inside the Docker stack
+```
+
+Each entry has `exc_type`, `exc_message`, `origin` (the innermost `src/fightdb` frame, usually where the fix goes), `traceback`, `context` (`command`, `run_id`, `page`, query params), `version` (git SHA in Docker) and a `fingerprint` that groups repeats. Known secrets are redacted before writing. Failed refreshes are also in the `scrape_runs` table and on the Status page. Add a regression test for the failure before fixing it.
 
 ## macOS note
 Run Python through `make` targets, or prefix commands with `PYTHONPATH=src` (e.g. `PYTHONPATH=src uv run fightdb --help`). macOS can mark uv's editable-install `.pth` file as hidden, and Python then skips it.

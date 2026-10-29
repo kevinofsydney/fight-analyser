@@ -1,0 +1,51 @@
+# Hardened variant of docker-compose.yml for a shared Docker host reached over Tailscale.
+# Host-specific values (bind address, port, data path) come from .env, so none are committed:
+#   BIND_ADDR=<tailscale ip>   HOST_PORT=81xx   DATA_DIR=/srv/apps/fight-analyser   GIT_SHA=<sha>
+# Run from the repo root:
+#   sudo docker compose -f deploy/compose.homelab.yml --env-file .env up -d --build
+name: fight-analyser
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      GIT_SHA: ${GIT_SHA:-dev}
+  image: fight-analyser:${GIT_SHA:-dev}
+  env_file:
+    - path: ../.env
+      required: false
+  # Pinned so paths copied from .env.example can't point outside the /data volume.
+  environment:
+    DB_PATH: /data/fightdb.duckdb
+    DOWNLOAD_DIR: /data/sources
+    LOG_DIR: /data/logs
+  volumes:
+    - ${DATA_DIR:?set DATA_DIR in .env}:/data
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  app:
+    <<: *common
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${HOST_PORT:-8501}:8501"
+    # Measured ~230 MB after browsing every page.
+    mem_limit: 768m
+    cpus: 1.0
+
+  refresher:
+    <<: *common
+    command:
+      - sh
+      - -c
+      - "[ -f /data/fightdb.duckdb ] || fightdb -v backfill; exec supercronic /app/deploy/crontab"
+    healthcheck:
+      disable: true
+    # A backfill/refresh peaks at ~1.5 GB for about 10 s; idle it is just supercronic.
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 1.0

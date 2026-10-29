@@ -6,3 +6,7 @@ gatherUsageStats = false
 
 [theme]
 base = "dark"
+
+[logger]
+# Plain logging (not rich) so uncaught page errors reach fightdb's JSON error log.
+enableRich = false

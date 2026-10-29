@@ -28,6 +28,7 @@ Other commands:
 | `uv run fightdb model eval` | Walk-forward calibration of the win model, year by year |
 | `uv run fightdb db status` | Row counts and recent refresh runs |
 | `make check` | Lint, typecheck, tests |
+| `make errors` | Every logged error, grouped by cause (see [AGENTS.md](AGENTS.md#fixing-errors)) |
 
 On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src` (macOS can hide uv's editable-install file, so Python skips it).
 

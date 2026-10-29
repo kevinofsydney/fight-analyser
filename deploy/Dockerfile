@@ -12,6 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     DB_PATH=/data/fightdb.duckdb \
     DOWNLOAD_DIR=/data/sources \
+    LOG_DIR=/data/logs \
     OVERRIDES_DIR=/app/data/overrides \
     HYPOTHESES_DIR=/app/hypotheses
 
@@ -37,6 +38,9 @@ RUN uv sync --frozen --no-dev
 
 RUN useradd --create-home --uid 1000 fight && mkdir -p /data && chown -R fight /data /app
 USER fight
+# Late in the file so a new commit doesn't invalidate the dependency layers.
+ARG GIT_SHA=dev
+ENV GIT_SHA=${GIT_SHA}
 VOLUME ["/data"]
 EXPOSE 8501
 

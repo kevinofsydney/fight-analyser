@@ -111,6 +111,7 @@ def import_history(
                     warnings.append(
                         f"{name} is stale (published {fetched.published}); trying fallback"
                     )
+                    log.warning(warnings[-1])
                     continue
                 bundle = load_bundle(fetched, since)
                 if not bundle.bouts:
@@ -118,6 +119,7 @@ def import_history(
                 counts = upsert.upsert_history(con, bundle)
                 if i > 0:
                     warnings.append(f"used fallback history source {name}")
+                    log.warning(warnings[-1])
                 return bundle, counts, warnings
             except Exception as exc:  # noqa: BLE001 - any failure moves to the next source
                 log.exception("history source %s failed", name)

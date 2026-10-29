@@ -10,6 +10,11 @@ x-common: &common
   env_file:
     - path: ../.env
       required: false
+  # Pinned so paths copied from .env.example can't point outside the /data volume.
+  environment:
+    DB_PATH: /data/fightdb.duckdb
+    DOWNLOAD_DIR: /data/sources
+    LOG_DIR: /data/logs
   volumes:
     - fightdb-data:/data
   restart: unless-stopped

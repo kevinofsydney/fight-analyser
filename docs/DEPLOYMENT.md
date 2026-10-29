@@ -80,6 +80,24 @@ make app                      # http://localhost:8501
      tar czf /backup/fightdb-$(date +%F).tgz -C /data .
    ```
 
+### Shared Docker host (hardened variant)
+
+On a box that also runs other services, use [`deploy/compose.homelab.yml`](../deploy/compose.homelab.yml) instead. It binds to one address (such as the host's Tailscale IP), stores data in a host directory, and adds memory/CPU limits, log rotation, `no-new-privileges` and a git-SHA image tag. Put these in the repo-root `.env` on the host:
+
+```bash
+BIND_ADDR=<tailscale-ip>     # never 0.0.0.0 on a shared host
+HOST_PORT=8101
+DATA_DIR=/srv/apps/fight-analyser   # owned by uid 1000 (the container user)
+GIT_SHA=<short commit sha>
+```
+
+```bash
+sudo docker compose -f deploy/compose.homelab.yml --env-file .env up -d --build
+sudo docker compose -f deploy/compose.homelab.yml --env-file .env exec refresher fightdb errors --full
+```
+
+A refresh peaks at about 1.5 GB of RAM for about 10 seconds, and the app uses about 250 MB.
+
 ### Exposing the homelab instance outside your network (pick one)
 
 | Method | Public? | Secret needed | Notes |

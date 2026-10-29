@@ -6,7 +6,7 @@ RUN = PYTHONPATH=src $(UV) run
 COMPOSE = docker compose -f deploy/docker-compose.yml
 ARGS ?=
 
-.PHONY: setup lint format typecheck test check backfill refresh build app fixtures \
+.PHONY: setup lint format typecheck test check backfill refresh build app fixtures errors \
         docker-build docker-up docker-down hypotheses requirements
 
 setup:
@@ -39,6 +39,9 @@ build:
 
 hypotheses:
 	$(RUN) fightdb hypothesis run-all
+
+errors:
+	$(RUN) fightdb errors --full
 
 app:
 	$(RUN) streamlit run src/fightdb/app/Home.py

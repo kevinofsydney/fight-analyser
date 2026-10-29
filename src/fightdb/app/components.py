@@ -9,6 +9,7 @@ from typing import Any
 
 import streamlit as st
 
+from fightdb import errorlog
 from fightdb.app import data
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY
@@ -18,6 +19,9 @@ CM_PER_IN = 2.54
 
 def page(title: str, icon: str = "🥊") -> None:
     st.set_page_config(page_title=f"{title} · Fight Analyser", page_icon=icon, layout="wide")
+    # Streamlit logs uncaught page exceptions on a non-propagating logger; catch them there too.
+    errorlog.install("app", "streamlit.error_util")
+    errorlog.bind(page=title, query=dict(st.query_params))
     _password_gate()
     if not data.db_ready():
         st.title(title)
