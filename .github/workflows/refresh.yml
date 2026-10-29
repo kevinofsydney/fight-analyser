@@ -1,0 +1,57 @@
+name: Daily refresh
+
+# Free-hosting path: build the database here and publish it as the `data-latest` release asset.
+# The app (Streamlit Cloud / Hugging Face / homelab) downloads it via DATA_RELEASE_URL.
+# Needs: Settings -> Actions -> General -> Workflow permissions -> "Read and write".
+
+on:
+  schedule:
+    - cron: "0 11 * * *" # an hour after fight-canon-db publishes at 10:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+env:
+  DB_PATH: data/fightdb.duckdb
+  RELEASE_TAG: data-latest
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-dev
+
+      - name: Download the current database (keeps card-change history)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data
+          gh release download "$RELEASE_TAG" --pattern fightdb.duckdb --dir data || echo "No previous database; starting fresh."
+
+      - name: Refresh (backfill on the first run)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -f "$DB_PATH" ]; then uv run fightdb -v refresh; else uv run fightdb -v backfill; fi
+
+      - name: Publish the database
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --title "Latest data" --latest=false \
+              --notes "Built daily by the Daily refresh workflow from fight-canon-db (MIT) and Greco1899/scrape_ufc_stats (data from UFC Stats), with upcoming cards from ESPN. Personal, non-commercial analysis."
+          gh release upload "$RELEASE_TAG" "$DB_PATH" --clobber
+
+      - name: Summary
+        run: uv run fightdb db status | head -60 >> "$GITHUB_STEP_SUMMARY"

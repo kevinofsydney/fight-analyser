@@ -60,3 +60,11 @@ def test_past_event_disappearing_is_not_a_cancellation():
     past = CardEvent("e0", "UFC 399", date(2026, 10, 1))
     res = diff_cards([past], [bout("b0", "x", "y", event="e0")], [], [], TODAY)
     assert res.changes == []
+
+
+def test_same_bout_id_new_fighter():
+    res = diff_cards([E1], BASE, [E1], [BASE[0], bout("b2", "p", "w")], TODAY)
+    assert types(res) == ["fighter_replaced"]
+    tba = [BASE[0], bout("b2", "p", "tba:b2:b")]
+    res = diff_cards([E1], tba, [E1], [BASE[0], bout("b2", "p", "q")], TODAY)
+    assert types(res) == ["opponent_announced"]

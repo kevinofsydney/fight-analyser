@@ -1,0 +1,11 @@
+title = "fight-analyser gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Example config and public test data"
+paths = [
+  '''\.env\.example$''',
+  '''tests/fixtures/''',
+]

@@ -1,0 +1,46 @@
+name: Source canary
+
+# Weekly: rebuild test fixtures from the live sources and run the tests against them.
+# Opens an issue if an upstream changed its format or stopped updating.
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - name: Rebuild fixtures from live sources
+        run: make fixtures
+      - name: Run tests against fresh fixtures
+        run: make test
+      - name: Check upstream freshness
+        run: |
+          uv run python - <<'EOF'
+          import sys
+          from datetime import date, timedelta
+          from fightdb.config import get_settings
+          from fightdb.pipeline.backfill import fetch_fight_canon, fetch_greco, is_stale
+          from fightdb.sources import http
+          s = get_settings()
+          with http.make_client() as c:
+              stale = [f.source for f in (fetch_fight_canon(c, s), fetch_greco(c, s)) if is_stale(f, s)]
+          print("stale sources:", stale)
+          sys.exit(1 if stale else 0)
+          EOF
+      - name: Open an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --title "Source canary failed ($(date -u +%F))" \
+            --body "The weekly source canary failed: an upstream dataset or the ESPN feed may have changed format or stopped updating. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

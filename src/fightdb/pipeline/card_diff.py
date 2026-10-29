@@ -169,6 +169,18 @@ def diff_cards(
         prev = old_b.get(bid)
         if not prev:
             continue
+        if prev.fighter_ids != b.fighter_ids:
+            placeholder = any(f.startswith("tba:") for f in prev.fighter_ids)
+            res.changes.append(
+                CardChange(
+                    "opponent_announced" if placeholder else "fighter_replaced",
+                    f"{_vs(prev)} is now {_vs(b)}",
+                    b.event_id,
+                    bid,
+                    {"bout": _vs(prev)},
+                    {"bout": _vs(b)},
+                )
+            )
         if prev.weight_class != b.weight_class:
             res.changes.append(
                 CardChange(

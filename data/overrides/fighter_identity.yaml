@@ -1,0 +1,7 @@
+# Manual fighter matches for upcoming cards, used when automatic name matching fails.
+# Find the ESPN athlete ID in the Status page's "unmatched" list or the ESPN URL, and the
+# fighter_id (UFC Stats ID) in the Fighter page or `SELECT fighter_id, name FROM fighters`.
+#
+# espn:
+#   "4418809": "93fe7332d16c6ad9"
+espn: {}

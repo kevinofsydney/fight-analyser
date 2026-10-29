@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.env.*
+data/*
+!data/overrides/
+tests
+docs
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.claude

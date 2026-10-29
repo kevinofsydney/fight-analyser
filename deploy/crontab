@@ -1,0 +1,2 @@
+# Daily refresh at 11:00 UTC, an hour after fight-canon-db publishes (supercronic syntax).
+0 11 * * * fightdb -v refresh

@@ -34,31 +34,24 @@ TABLES = [
 ]
 
 
+# Fixed events so tests can assert known values: a modern title card, the earliest era
+# (missing stats), a card with a draw and a no contest, and a non-UFC event (must be filtered out).
+FIXTURE_EVENTS = [
+    "UFC 333: Volkanovski vs. Evloev",
+    "UFC 2: No Way Out",
+    "UFC Fight Night: Usman vs. Buckley",
+    "Inka 62 - Sudamerica En Lo Mas Alto",
+]
+
+
 def pick_events(src: sqlite3.Connection) -> list[int]:
-    q = src.execute
-    latest = q(
-        "SELECT event_id FROM events WHERE promotion = 'UFC' ORDER BY date DESC LIMIT 1"
-    ).fetchone()[0]
-    early = q(
-        "SELECT event_id FROM events WHERE promotion = 'UFC' AND name LIKE 'UFC 2:%'"
-    ).fetchone()[0]
-    draw_nc = q(
-        """SELECT e.event_id FROM events e JOIN fights f USING (event_id)
-           JOIN fight_participants p USING (fight_id)
-           WHERE e.promotion = 'UFC' AND e.date > '2012-01-01'
-           GROUP BY e.event_id HAVING sum(p.result = 'D') > 0 AND sum(p.result = 'NC') > 0
-           ORDER BY e.date DESC LIMIT 1"""
-    ).fetchone()
-    if draw_nc is None:
-        draw_nc = q(
-            """SELECT e.event_id FROM events e JOIN fights f USING (event_id) JOIN fight_participants p USING (fight_id)
-               WHERE e.promotion = 'UFC' AND p.result IN ('D', 'NC') ORDER BY e.date DESC LIMIT 1"""
-        ).fetchone()
-    other = q(
-        """SELECT e.event_id FROM events e JOIN fights f USING (event_id)
-           WHERE e.promotion <> 'UFC' ORDER BY e.date DESC LIMIT 1"""
-    ).fetchone()[0]
-    return [latest, early, draw_nc[0], other]
+    ids = []
+    for name in FIXTURE_EVENTS:
+        row = src.execute("SELECT event_id FROM events WHERE name = ?", [name]).fetchone()
+        if row is None:
+            raise SystemExit(f"fixture event not found in canon.db: {name}")
+        ids.append(row[0])
+    return ids
 
 
 def build_canon_mini(canon: Path, dest: Path) -> list[str]:

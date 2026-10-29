@@ -1,0 +1,43 @@
+# Homelab stack. From the repo root:  make docker-up
+# First data load:  docker compose -f deploy/docker-compose.yml exec refresher fightdb -v backfill
+name: fight-analyser
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  image: fight-analyser:latest
+  env_file:
+    - path: ../.env
+      required: false
+  volumes:
+    - fightdb-data:/data
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *common
+    ports:
+      - "8501:8501"
+    # The app only reads the database. The refresher swaps in a new file atomically.
+
+  refresher:
+    <<: *common
+    command: ["sh", "-c", "fightdb -v db init && exec supercronic /app/deploy/crontab"]
+    healthcheck:
+      disable: true
+
+  # Optional: expose the app through a Cloudflare Tunnel (no open ports).
+  # Enable with: docker compose -f deploy/docker-compose.yml --profile tunnel up -d
+  # Needs CLOUDFLARE_TUNNEL_TOKEN in .env (never commit it).
+  cloudflared:
+    image: cloudflare/cloudflared:2025.9.1
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [app]
+    restart: unless-stopped
+
+volumes:
+  fightdb-data:
