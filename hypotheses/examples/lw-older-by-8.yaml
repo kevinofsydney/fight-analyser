@@ -1,0 +1,18 @@
+id: lw-older-by-8
+title: "Men's lightweight: fighter 8+ years older"
+description: Does a big age advantage help or hurt at lightweight?
+population:
+  divisions: [lightweight]
+  sex: M
+  date_from: 2010-01-01
+condition:
+  - feature: diff_age_years
+    op: ">="
+    value: 8
+outcome: won
+compare_to: baseline_50
+sweep:
+  feature: diff_age_years
+  from: 0
+  to: 14
+  step: 1

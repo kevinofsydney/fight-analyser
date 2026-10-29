@@ -1,0 +1,14 @@
+id: sub-threat-vs-sub-defence
+title: "Submission specialist: how often do they win by submission?"
+description: >
+  Fighter's submission-threat index is 150+ (1.5x the division average). Compared with all
+  other fighters, how much more often do they win by submission?
+population:
+  date_from: 2010-01-01
+  min_ufc_fights_each: 3
+condition:
+  - feature: self_idx_sub_threat
+    op: ">="
+    value: 150
+outcome: won_sub
+compare_to: complement

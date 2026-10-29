@@ -1,0 +1,17 @@
+id: reach-advantage-5cm
+title: "Reach advantage of 5 cm or more (all men's divisions)"
+description: Does a clear reach advantage translate into wins?
+population:
+  sex: M
+  date_from: 2010-01-01
+condition:
+  - feature: diff_reach_cm
+    op: ">="
+    value: 5
+outcome: won
+compare_to: baseline_50
+sweep:
+  feature: diff_reach_cm
+  from: 0
+  to: 20
+  step: 2.5

@@ -1,0 +1,16 @@
+id: layoff-over-a-year
+title: "Ring rust: coming off a 365+ day layoff"
+population:
+  date_from: 2010-01-01
+  min_ufc_fights_each: 1
+condition:
+  - feature: self_days_since_last
+    op: ">="
+    value: 365
+outcome: won
+compare_to: baseline_50
+sweep:
+  feature: self_days_since_last
+  from: 90
+  to: 720
+  step: 90

@@ -1,0 +1,17 @@
+id: wrestler-vs-weak-tdd
+title: "Active wrestler vs weak takedown defence"
+description: >
+  Fighter shoots 4+ takedowns per 15 minutes (adjusted) and the opponent's adjusted takedown
+  defence is below 55%. How often does the wrestler win?
+population:
+  date_from: 2010-01-01
+  min_ufc_fights_each: 3
+condition:
+  - feature: self_td_att_p15_s
+    op: ">="
+    value: 4
+  - feature: opp_td_def_s
+    op: "<"
+    value: 0.55
+outcome: won
+compare_to: baseline_50
