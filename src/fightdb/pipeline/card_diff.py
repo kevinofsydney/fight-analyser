@@ -96,7 +96,10 @@ def diff_cards(
                 CardChange("event_cancelled", f"Event no longer listed: {e.name}", eid)
             )
 
-    old_b = {b.bout_id: b for b in stored_bouts if b.event_id not in res.cancelled_event_ids}
+    # Bouts of cancelled events are reported once, as the event; bouts of events that have
+    # simply happened (date passed, no longer listed) are not changes at all.
+    gone = {eid for eid in old_ev if eid not in new_ev}
+    old_b = {b.bout_id: b for b in stored_bouts if b.event_id not in gone}
     new_b = {b.bout_id: b for b in new_bouts}
     old_by_pair = {b.fighter_ids: b for b in old_b.values()}
 

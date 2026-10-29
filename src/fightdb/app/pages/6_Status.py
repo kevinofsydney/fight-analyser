@@ -60,19 +60,24 @@ if ev.empty:
 else:
     tot = ev["n"].sum()
     w = lambda c: (ev[c] * ev["n"]).sum() / tot  # noqa: E731
-    wm = (ev["brier_market"] * ev["n_market"]).sum() / ev["n_market"].sum()
-    wmm = (ev["brier_model_on_market_rows"] * ev["n_market"]).sum() / ev["n_market"].sum()
+    n_mk = ev["n_market"].sum()
+    wm = (ev["brier_market"] * ev["n_market"]).sum() / n_mk if n_mk else float("nan")
+    wmm = (ev["brier_model_on_market_rows"] * ev["n_market"]).sum() / n_mk if n_mk else float("nan")
     m = st.columns(4)
     m[0].metric("Brier score (lower is better)", f"{w('brier'):.4f}", help="Coin flip = 0.2500")
     m[1].metric("Accuracy", f"{w('accuracy'):.1%}")
-    m[2].metric("Model on bouts with odds", f"{wmm:.4f}")
-    m[3].metric("Closing betting line", f"{wm:.4f}", help="The market is the benchmark to beat")
-    if wmm > wm:
+    m[2].metric("Model on bouts with odds", f"{wmm:.4f}" if n_mk else "—")
+    m[3].metric(
+        "Closing betting line",
+        f"{wm:.4f}" if n_mk else "—",
+        help="The market is the benchmark to beat",
+    )
+    if n_mk and wmm > wm:
         st.caption(
             "Honest read: the model beats a coin flip but not the closing betting line. Treat it as a "
             "structured summary of the stats, not as an edge over the market."
         )
-    else:
+    elif n_mk:
         st.caption(
             "The model matched or beat the closing line on these years. Be sceptical and check for leakage."
         )
