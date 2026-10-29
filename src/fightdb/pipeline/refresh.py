@@ -64,10 +64,17 @@ def run_refresh(
         try:
             init_db(con)
             if history:
+                stored = _completed_bouts(con)
                 bundle, counts, warns = backfill.import_history(con, settings, client, source, file)
                 report.update(source=bundle.source, source_version=bundle.source_version)
                 report["counts"].update(counts)
                 report["warnings"] += warns
+                # Upserts never delete, so a truncated upstream file cannot lose data, but it is a
+                # sign the source is broken and worth surfacing.
+                if stored and len(bundle.bouts) < 0.98 * stored:
+                    report["warnings"].append(
+                        f"{bundle.source} returned {len(bundle.bouts)} completed bouts; we already had {stored}"
+                    )
             if cards:
                 try:
                     events = (fetch_upcoming or _fetch_espn)(client, today)
@@ -80,9 +87,7 @@ def run_refresh(
                 except Exception as exc:  # noqa: BLE001 - the history import is still worth keeping
                     log.exception("upcoming cards failed")
                     report["warnings"].append(f"upcoming cards failed: {exc}")
-            if not con.execute("SELECT count(*) FROM bouts WHERE status = 'completed'").fetchone()[
-                0
-            ]:  # type: ignore[index]
+            if not _completed_bouts(con):
                 raise RuntimeError("database has no completed bouts; run a backfill first")
             report["counts"].update(build.build_all(con, train_models=train_models))
             max_date = con.execute(
@@ -105,6 +110,11 @@ def run_refresh(
     if report.get("card_changes"):
         notify.notify_card_changes(settings.discord_webhook_url, report["card_changes"])
     return report
+
+
+def _completed_bouts(con: duckdb.DuckDBPyConnection) -> int:
+    row = con.execute("SELECT count(*) FROM bouts WHERE status = 'completed'").fetchone()
+    return int(row[0]) if row else 0
 
 
 def _fetch_espn(client: httpx.Client, today: date) -> list[UpcomingEvent]:

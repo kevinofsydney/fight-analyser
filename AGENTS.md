@@ -24,11 +24,15 @@ Rules for every coding agent (Claude, Codex, DS Flash 1017, others) and human wo
 | `make check` | Lint + typecheck + tests. **Must pass.** |
 | `make test` | Tests only |
 | `make format` | Auto-format (ruff) |
-| `make backfill` | Download and import full history (not in CI) |
+| `make backfill` | Download and import full history + upcoming cards (not in CI) |
+| `make hypotheses` | Run every saved hypothesis |
 | `make refresh` | Run the daily refresh once |
 | `make app` | Run the Streamlit app at localhost:8501 |
 | `make fixtures` | Rebuild small test fixtures from the live sources |
 | `make docker-up` / `make docker-down` | Homelab stack |
+
+## macOS note
+Run Python through `make` targets, or prefix commands with `PYTHONPATH=src` (e.g. `PYTHONPATH=src uv run fightdb --help`). macOS can mark uv's editable-install `.pth` file as hidden, and Python then skips it.
 
 ## Conventions
 - Python 3.12, `src/` layout, package name `fightdb`.

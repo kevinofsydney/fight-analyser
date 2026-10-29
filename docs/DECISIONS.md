@@ -4,6 +4,8 @@ Choices for the owner (@kevinofsydney) to make. Each has a **recommended default
 
 **Status key:** ⬜ open · ✅ decided
 
+> **Build note (2026-10-29):** the first build (branch `build/v1`) implemented the **recommended** option for every decision below. Changing a decision now means changing code; the "Affects" column shows where.
+
 ## Blocking: decide before Phase 0/1
 
 | # | Decision | Options | Recommended | Affects | Decision |

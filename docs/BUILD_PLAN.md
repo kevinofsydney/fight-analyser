@@ -4,6 +4,23 @@ How to build Fight Analyser in small tasks that different coding agents (Claude,
 
 Read first: [PRD.md](PRD.md) (what), [../AGENTS.md](../AGENTS.md) (rules), [DECISIONS.md](DECISIONS.md) (open choices). This plan assumes the **recommended defaults** in DECISIONS.md. If a decision changes, update the affected tasks before handing them out.
 
+## Build status (2026-10-29)
+
+Phases 0–7 and most of 8–9 are implemented (branch `build/v1`), using the recommended defaults for every decision. Verified: `make check` passes (74 offline tests), a real backfill imports 8,971 UFC bouts plus 63 upcoming bouts in about 20 seconds, and all seven app pages render against the real data.
+
+Where the build differs from the task text below:
+- `bout_sides` is materialised as a table by `pipeline/build.py` (not a SQL view in `views.sql`); `upcoming_bout_sides` and `completed_bout_sides` are views over it.
+- Win/method models are trained inside `fightdb build`/`refresh` (no separate `fightdb model train`); `fightdb model eval` shows the results.
+- The UI has six pages plus Home; the "Upcoming" page is the Home page.
+
+Not done yet (good next tasks):
+- **Wikipedia fallback** for upcoming cards when the ESPN feed breaks (DATA_SOURCES.md). Today an ESPN failure keeps the last card and logs a warning.
+- **Strength-of-schedule adjustment** in the indices (ANALYSIS_IDEAS.md §1.3). Indices are shrunk and division-relative but not opponent-adjusted.
+- **Short-notice flag** (question 15): needs a few weeks of `card_changes` history; then derive "days between bout added and event" per bout.
+- **Judging questions** (28–29): import `judge_scores` from fight-canon-db.
+- **Docker image** has not been built locally (no Docker daemon was running); the `docker` CI job builds it on every push.
+- T2.6 `crosscheck.py` is not a separate module: the adapter tests compare fight-canon and Greco on the fixture events, and the weekly canary reruns them on fresh data.
+
 ---
 
 ## How this plan works
