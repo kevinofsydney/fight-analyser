@@ -54,6 +54,8 @@ python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = false
 check_untyped_defs = true
+# Streamlit page scripts are top-level UI code; data access they use (app/data.py) is typed.
+exclude = ["src/fightdb/app/pages/", "src/fightdb/app/Home.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
