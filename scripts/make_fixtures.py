@@ -3,7 +3,8 @@
     python scripts/make_fixtures.py [--canon path/to/canon.db] [--greco path/to/csv_dir]
 
 Without paths, downloads the latest fight-canon-db release and Greco1899 CSVs into data/sources/.
-Writes tests/fixtures/canon_mini.db, tests/fixtures/greco/*.csv and tests/fixtures/espn/*.json.
+Writes tests/fixtures/canon_mini.db, tests/fixtures/greco/*.csv and tests/fixtures/espn/*.json
+(and tests/fixtures/wikipedia/*.wikitext with --wikipedia).
 """
 
 from __future__ import annotations
@@ -11,13 +12,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sqlite3
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fightdb.config import get_settings
 from fightdb.pipeline.backfill import fetch_fight_canon, fetch_greco
-from fightdb.sources import espn, http
+from fightdb.sources import espn, http, wikipedia
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "tests" / "fixtures"
@@ -31,6 +34,7 @@ TABLES = [
     "fight_aliases",
     "event_aliases",
     "odds",
+    "judge_scores",
 ]
 
 
@@ -88,6 +92,7 @@ def build_canon_mini(canon: Path, dest: Path) -> list[str]:
         "round_stats": (f"fight_id IN ({fmarks})", fights),
         "fight_aliases": (f"fight_id IN ({fmarks})", fights),
         "odds": (f"fight_id IN ({fmarks})", fights),
+        "judge_scores": (f"fight_id IN ({fmarks})", fights),
         "fighters": (f"fighter_id IN ({pmarks})", fighters),
         "fighter_aliases": (f"fighter_id IN ({pmarks})", fighters),
     }
@@ -143,6 +148,9 @@ def main() -> None:
     ap.add_argument("--canon", type=Path)
     ap.add_argument("--greco", type=Path)
     ap.add_argument("--skip-espn", action="store_true")
+    # Wikipedia fixtures pin specific upcoming events, so they're only rebuilt on request; the
+    # weekly canary checks the live pages separately.
+    ap.add_argument("--wikipedia", action="store_true", help="also rebuild Wikipedia fixtures")
     args = ap.parse_args()
     settings = get_settings()
     with http.make_client() as client:
@@ -155,8 +163,28 @@ def main() -> None:
             today = datetime.now(UTC).date()
             payload = espn.fetch_scoreboard(client, today)
             (OUT / "espn").mkdir(parents=True, exist_ok=True)
-            (OUT / "espn" / "scoreboard_range.json").write_text(json.dumps(payload))
+            (OUT / "espn" / "scoreboard_range.json").write_text(
+                json.dumps(payload), encoding="utf-8"
+            )
             print("espn events:", len(payload.get("events", [])))
+        if args.wikipedia:
+            build_wikipedia(client, OUT / "wikipedia")
+
+
+def build_wikipedia(client, dest: Path) -> None:
+    """The scheduled-events table of the list page, plus the next two events' pages."""
+    dest.mkdir(parents=True, exist_ok=True)
+    listing = wikipedia._wikitext_of(client, [wikipedia.LIST_PAGE])[wikipedia.LIST_PAGE]
+    start = listing.find('id="Scheduled events"')
+    table = listing[listing.rfind("{|", 0, start) : listing.find("|}", start) + 2]
+    (dest / "list_scheduled.wikitext").write_text(table, encoding="utf-8")
+    events = sorted(wikipedia.parse_scheduled_events(table), key=lambda e: e.date)
+    pages = wikipedia._wikitext_of(client, [e.page for e in events[:2]])
+    for title, text in pages.items():
+        slug = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+        slug = re.sub(r"[^A-Za-z0-9]+", "_", slug).strip("_")
+        (dest / f"{slug}.wikitext").write_text(text, encoding="utf-8")
+    print("wikipedia pages:", list(pages))
 
 
 if __name__ == "__main__":

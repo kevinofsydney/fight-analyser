@@ -68,3 +68,12 @@ def test_same_bout_id_new_fighter():
     tba = [BASE[0], bout("b2", "p", "tba:b2:b")]
     res = diff_cards([E1], tba, [E1], [BASE[0], bout("b2", "p", "q")], TODAY)
     assert types(res) == ["opponent_announced"]
+
+
+def test_newly_identified_fighter_is_not_a_change():
+    before = [
+        BASE[0],
+        CardBout("b2", "e1", "p", "espn:123", "P", "Matthieu Duclos", "Lightweight", 1),
+    ]
+    after = [BASE[0], CardBout("b2", "e1", "p", "ec32", "P", "Matthieu Duclos", "Lightweight", 1)]
+    assert diff_cards([E1], before, [E1], after, TODAY).changes == []

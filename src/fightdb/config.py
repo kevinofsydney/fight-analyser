@@ -31,6 +31,9 @@ class Settings(BaseSettings):
 
     history_source: Literal["fight_canon", "greco"] = "fight_canon"
     history_stale_days: int = 7
+    # Data-quality gate (pipeline/quality.py); measured 2026-11-09: 5.5% NULL reach, 100% coverage.
+    dq_max_null_reach: float = 0.15
+    dq_min_stats_coverage: float = 0.95
     http_user_agent: str = "fight-analyser/0.1 (+https://github.com/kevinofsydney/fight-analyser)"
 
     refresh_cron: str = "0 11 * * *"

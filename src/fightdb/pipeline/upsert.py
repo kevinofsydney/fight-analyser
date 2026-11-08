@@ -17,6 +17,7 @@ _KEYS = {
     "bouts": ["bout_id"],
     "round_stats": ["bout_id", "fighter_id", "round"],
     "odds": ["bout_id", "fighter_id"],
+    "judge_scores": ["bout_id", "fighter_id", "round", "judge"],
 }
 # Columns that keep their original value when a row is updated.
 _PRESERVE = {"bouts": {"first_seen_at", "replaces_bout_id"}}
@@ -65,6 +66,7 @@ def upsert_history(con: duckdb.DuckDBPyConnection, bundle: HistoryBundle) -> dic
         "bouts": upsert_records(con, "bouts", bundle.bouts),
         "round_stats": upsert_records(con, "round_stats", bundle.rounds),
         "odds": upsert_records(con, "odds", bundle.odds),
+        "judge_scores": upsert_records(con, "judge_scores", bundle.judge_scores),
     }
     return counts
 

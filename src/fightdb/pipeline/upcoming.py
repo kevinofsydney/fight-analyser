@@ -1,4 +1,11 @@
-"""Write upcoming cards (from ESPN) into the database, recording what changed since last time."""
+"""Write upcoming cards into the database, recording what changed since last time.
+
+ESPN is the primary source and drives change detection. Wikipedia is a fallback for days when
+ESPN fails: it only *adds* bouts that aren't on the stored card (matched by date and fighter
+names) and never cancels or rewrites anything, because a missing listing on a secondary source is
+not evidence of a cancellation. When ESPN comes back, fallback events and bouts are folded into
+the ESPN ones without being reported as changes.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +19,7 @@ import duckdb
 import pandas as pd
 
 from fightdb.pipeline import upsert
-from fightdb.pipeline.card_diff import CardBout, CardEvent, DiffResult, diff_cards
+from fightdb.pipeline.card_diff import CardBout, CardChange, CardEvent, DiffResult, diff_cards
 from fightdb.sources import identity, units
 from fightdb.sources.models import Bout, Event, Fighter, FighterAlias, UpcomingEvent
 
@@ -34,6 +41,9 @@ def ingest_upcoming(
 ) -> UpcomingResult:
     overrides = identity.load_overrides(overrides_path) if overrides_path else {}
     matcher = identity.FighterMatcher(con, overrides)
+    if any(ev.source != "espn" for ev in upcoming):
+        return _ingest_fallback(con, upcoming, today, matcher, run_id)
+    _adopt_fallback_events(con, upcoming)
 
     events: list[Event] = []
     bouts: list[Bout] = []
@@ -43,7 +53,7 @@ def ingest_upcoming(
     card_bouts: list[CardBout] = []
 
     for ev in upcoming:
-        event_id = f"espn:{ev.espn_event_id}"
+        event_id = f"espn:{ev.source_event_id}"
         events.append(
             Event(
                 event_id=event_id,
@@ -61,13 +71,13 @@ def ingest_upcoming(
             ids = []
             for side, uf in (("a", ub.fighter_a), ("b", ub.fighter_b)):
                 if identity.is_placeholder(uf.name):
-                    fid = f"tba:{ub.espn_bout_id}:{side}"
+                    fid = f"tba:{ub.source_bout_id}:{side}"
                     new_fighters.append(Fighter(fighter_id=fid, name="TBA", source="espn"))
                     ids.append(fid)
                     continue
-                m = matcher.match(uf.espn_id, uf.name, uf.record, division)
+                m = matcher.match(uf.source_fighter_id, uf.name, uf.record, division)
                 if m.fighter_id is None:
-                    fid = f"espn:{uf.espn_id}"
+                    fid = f"espn:{uf.source_fighter_id}"
                     unmatched.append(f"{uf.name} ({ev.name})")
                     new_fighters.append(
                         Fighter(fighter_id=fid, name=uf.name, sex=sex, source="espn")  # type: ignore[arg-type]
@@ -78,14 +88,14 @@ def ingest_upcoming(
                         aliases.append(
                             FighterAlias(
                                 source="espn",
-                                source_id=uf.espn_id,
+                                source_id=str(uf.source_fighter_id),
                                 fighter_id=fid,
                                 name=uf.name,
                                 method=m.method,
                             )
                         )
                 ids.append(fid)
-            bout_id = f"espn:{ub.espn_bout_id}"
+            bout_id = f"espn:{ub.source_bout_id}"
             bouts.append(
                 Bout(
                     bout_id=bout_id,
@@ -139,6 +149,151 @@ def ingest_upcoming(
         unmatched,
         [c.summary for c in diff.changes] if not first_run else [],
     )
+
+
+def _slug(text: str) -> str:
+    return identity.normalise_name(text).replace(" ", "-") or "x"
+
+
+def _ingest_fallback(
+    con: duckdb.DuckDBPyConnection,
+    upcoming: list[UpcomingEvent],
+    today: date,
+    matcher: identity.FighterMatcher,
+    run_id: str | None,
+) -> UpcomingResult:
+    stored_events, stored_bouts = _stored_card(con)
+    stored_pairs: dict[str, list[tuple[str, str]]] = {}
+    known_names: dict[str, str] = {}  # normalised name -> fighter_id already on the card
+    for sb in stored_bouts:
+        stored_pairs.setdefault(sb.event_id, []).append((sb.a_name, sb.b_name))
+        known_names.setdefault(identity.name_key(sb.a_name), sb.a_id)
+        known_names.setdefault(identity.name_key(sb.b_name), sb.b_id)
+
+    events: list[Event] = []
+    bouts: list[Bout] = []
+    new_fighters: list[Fighter] = []
+    unmatched: list[str] = []
+    changes: list[CardChange] = []
+    n_events = n_bouts = 0
+    for ev in upcoming:
+        if ev.date < today:
+            continue
+        n_events += 1
+        same_day = [
+            e for e in stored_events if e.date is not None and abs((e.date - ev.date).days) <= 1
+        ]
+        if same_day:
+            event_id = same_day[0].event_id
+        else:
+            event_id = f"{ev.source}:{_slug(ev.source_event_id)}"
+            events.append(
+                Event(
+                    event_id=event_id,
+                    name=ev.name,
+                    date=ev.date,
+                    location=ev.location,
+                    status="upcoming",
+                    source=ev.source,
+                )
+            )
+            changes.append(
+                CardChange(
+                    "event_added",
+                    f"New event (via {ev.source}): {ev.name} ({ev.date})",
+                    event_id,
+                    new_value={"date": str(ev.date)},
+                )
+            )
+        have = stored_pairs.setdefault(event_id, [])
+        for ub in ev.bouts:
+            if ub.status == "cancelled":
+                continue
+            n_bouts += 1
+            a_name, b_name = ub.fighter_a.name, ub.fighter_b.name
+            if any(identity.same_matchup(a_name, b_name, x, y) for x, y in have):
+                continue
+            division, sex = units.division_from_weight_class(ub.weight_class)
+            ids = []
+            for uf in (ub.fighter_a, ub.fighter_b):
+                m = matcher.match(None, uf.name, uf.record, division)
+                fid = m.fighter_id or known_names.get(identity.name_key(uf.name))
+                if fid is None:
+                    fid = f"{ev.source}:{_slug(uf.name)}"
+                    unmatched.append(f"{uf.name} ({ev.name})")
+                    new_fighters.append(
+                        Fighter(fighter_id=fid, name=uf.name, sex=sex, source=ev.source)  # type: ignore[arg-type]
+                    )
+                ids.append(fid)
+            bout_id = f"{ev.source}:{_slug(ev.source_event_id)}:{_slug(ub.source_bout_id)}"
+            bouts.append(
+                Bout(
+                    bout_id=bout_id,
+                    event_id=event_id,
+                    weight_class=ub.weight_class,
+                    division=division,
+                    sex=sex,  # type: ignore[arg-type]
+                    is_title=ub.is_title,
+                    scheduled_rounds=ub.scheduled_rounds,
+                    card_order=ub.card_order,
+                    fighter_a_id=ids[0],
+                    fighter_b_id=ids[1],
+                    status="scheduled",
+                    source=ev.source,
+                )
+            )
+            have.append((a_name, b_name))
+            changes.append(
+                CardChange(
+                    "bout_added",
+                    f"Added (via {ev.source}): {a_name} vs. {b_name} ({ev.name})",
+                    event_id,
+                    bout_id,
+                )
+            )
+
+    upsert.upsert_records(
+        con, "fighters", [f for f in new_fighters if not _exists(con, f.fighter_id)]
+    )
+    upsert.upsert_records(con, "events", events)
+    upsert.upsert_records(con, "bouts", bouts)
+    first_run = not stored_events
+    _apply(con, DiffResult(changes=changes), today, run_id, record=not first_run)
+    return UpcomingResult(
+        n_events, n_bouts, unmatched, [c.summary for c in changes] if not first_run else []
+    )
+
+
+def _adopt_fallback_events(con: duckdb.DuckDBPyConnection, upcoming: list[UpcomingEvent]) -> None:
+    """Fold upcoming events only a fallback source knew about into the ESPN event on the same
+    date, so ESPN's return doesn't read as one event cancelled and another added."""
+    fallback = con.execute(
+        """SELECT event_id, date FROM events
+           WHERE status = 'upcoming' AND NOT starts_with(event_id, 'espn:')"""
+    ).fetchall()
+    for eid, day in fallback:
+        ev = next((e for e in upcoming if day is not None and abs((e.date - day).days) <= 1), None)
+        if ev is None:
+            continue
+        target = f"espn:{ev.source_event_id}"
+        if not con.execute("SELECT 1 FROM events WHERE event_id = ?", [target]).fetchone():
+            upsert.upsert_records(
+                con,
+                "events",
+                [
+                    Event(
+                        event_id=target,
+                        name=ev.name,
+                        date=ev.date,
+                        location=ev.location,
+                        status="upcoming",
+                        source="espn",
+                    )
+                ],
+            )
+        con.execute("UPDATE bouts SET event_id = ? WHERE event_id = ?", [target, eid])
+        con.execute("UPDATE card_changes SET event_id = ? WHERE event_id = ?", [target, eid])
+        con.execute("DELETE FROM events WHERE event_id = ?", [eid])
 
 
 def _exists(con: duckdb.DuckDBPyConnection, fighter_id: str) -> bool:

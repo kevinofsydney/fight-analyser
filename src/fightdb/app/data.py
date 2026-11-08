@@ -123,3 +123,17 @@ def last_run() -> pd.Series | None:
         "SELECT * FROM scrape_runs WHERE status <> 'failed' ORDER BY finished_at DESC LIMIT 1"
     )
     return None if df.empty else df.iloc[0]
+
+
+def model_evals() -> pd.DataFrame:
+    return query("SELECT * FROM model_evals ORDER BY model_name, test_year")
+
+
+def method_labels_calibrated() -> bool:
+    from fightdb.models import outcome
+
+    try:
+        ev = model_evals()
+    except duckdb.Error:
+        return False
+    return outcome.is_calibrated(ev, outcome.METHOD_MODEL)

@@ -22,8 +22,8 @@ import httpx
 from fightdb import errorlog, notify
 from fightdb.config import Settings
 from fightdb.db.conn import init_db
-from fightdb.pipeline import backfill, build, upcoming
-from fightdb.sources import espn, http
+from fightdb.pipeline import backfill, build, quality, upcoming
+from fightdb.sources import espn, http, wikipedia
 from fightdb.sources.models import UpcomingEvent
 
 log = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ def run_refresh(
     fetch_upcoming: Callable[[httpx.Client, date], list[UpcomingEvent]] | None = None,
     today: date | None = None,
     train_models: bool = True,
+    check_wikipedia: Callable[[httpx.Client, date], list[wikipedia.WikiEvent]] | None = None,
 ) -> dict[str, Any]:
     today = today or datetime.now(UTC).date()
     db_path = Path(settings.db_path)
@@ -64,6 +65,7 @@ def run_refresh(
             con = duckdb.connect(str(tmp_path))
             try:
                 init_db(con)
+                before = quality.table_counts(con)
                 if history:
                     stored = _completed_bouts(con)
                     bundle, counts, warns = backfill.import_history(
@@ -96,10 +98,16 @@ def run_refresh(
                         report["card_changes"] = res.changes
                     except Exception as exc:  # noqa: BLE001 - the history import is still worth keeping
                         log.exception("upcoming cards failed")
-                        report["warnings"].append(f"upcoming cards failed: {exc}")
+                        report["warnings"].append(f"ESPN upcoming cards failed: {exc}")
+                        _wikipedia_fallback(
+                            con, client, today, settings, run_id, report, check_wikipedia
+                        )
                 if not _completed_bouts(con):
                     raise RuntimeError("database has no completed bouts; run a backfill first")
                 report["counts"].update(build.build_all(con, train_models=train_models))
+                failures = quality.check_quality(con, before, settings)
+                if failures:
+                    raise RuntimeError("data quality: " + "; ".join(failures))
                 max_date = con.execute(
                     "SELECT max(date) FROM events WHERE status = 'completed'"
                 ).fetchone()[0]  # type: ignore[index]
@@ -124,6 +132,60 @@ def run_refresh(
     if report.get("card_changes"):
         notify.notify_card_changes(settings.discord_webhook_url, report["card_changes"])
     return report
+
+
+def _wikipedia_fallback(
+    con: duckdb.DuckDBPyConnection,
+    client: httpx.Client,
+    today: date,
+    settings: Settings,
+    run_id: str,
+    report: dict[str, Any],
+    fetch: Callable[[httpx.Client, date], list[wikipedia.WikiEvent]] | None,
+) -> None:
+    """ESPN is down: add any new bouts Wikipedia lists, keep everything already stored, and
+    list stored bouts Wikipedia doesn't have (possible cancellations) for a human to check."""
+    try:
+        wiki = (fetch or wikipedia.fetch_upcoming)(client, today)
+        stored = _stored_pairs(con)
+        res = upcoming.ingest_upcoming(
+            con,
+            wikipedia.to_upcoming(wiki),
+            today,
+            settings.overrides_dir / "fighter_identity.yaml",
+            run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Wikipedia fallback failed")
+        report["warnings"].append(f"Wikipedia fallback failed: {exc}; kept the stored card")
+        return
+    report["warnings"].append(
+        f"used Wikipedia fallback for upcoming cards ({len(res.changes)} changes)"
+    )
+    report["counts"].update(upcoming_events=res.events, upcoming_bouts=res.bouts)
+    report["unmatched"] = res.unmatched
+    report["card_changes"] = res.changes
+    missing = [n for n in wikipedia.compare_cards(stored, wiki) if "Wikipedia doesn't" in n]
+    limit = 15
+    report["warnings"] += [f"check: {n}" for n in missing[:limit]]
+    if len(missing) > limit:
+        report["warnings"].append(
+            f"check: {len(missing) - limit} more stored bouts not on Wikipedia"
+        )
+
+
+def _stored_pairs(con: duckdb.DuckDBPyConnection) -> dict[date, set[frozenset[str]]]:
+    rows = con.execute(
+        """SELECT e.date, fa.name, fb.name
+           FROM bouts b JOIN events e USING (event_id)
+           JOIN fighters fa ON fa.fighter_id = b.fighter_a_id
+           JOIN fighters fb ON fb.fighter_id = b.fighter_b_id
+           WHERE e.status = 'upcoming' AND b.status = 'scheduled'"""
+    ).fetchall()
+    stored: dict[date, set[frozenset[str]]] = {}
+    for d, a, b in rows:
+        stored.setdefault(d, set()).add(frozenset((a, b)))
+    return stored
 
 
 def _completed_bouts(con: duckdb.DuckDBPyConnection) -> int:

@@ -121,3 +121,107 @@ def test_scheduled_uses_all_history(snap):
     row = snap.loc[("u", "a")]
     assert row["ufc_fights"] == 3 and row["streak"] == -1
     assert row["elo"] != 1500
+
+
+def test_submission_defence(con):
+    from fightdb.models import shrinkage
+
+    h = _history()
+    # d attempts 4 submissions in b4 and finishes a with one of them.
+    rounds = [r for r in h.rounds if not (r.bout_id == "b4" and r.fighter_id == "d")]
+    rounds.append(make_round("b4", "d", 1, sub_att=4))
+    upsert.upsert_history(con, h.model_copy(update={"rounds": rounds}))
+    s, k = snapshots.build_snapshots(con)
+    row = s.set_index(["bout_id", "fighter_id"]).loc[("u", "a")]
+    assert row["stat_sub_losses"] == 1 and row["opp_sub_att"] == 4
+    expected = shrinkage.shrink(
+        pd.Series([1.0]),
+        pd.Series([4.0]),
+        pd.Series([row["b_sub_loss_per_att"]]),
+        k["sub_loss_per_att"],
+    )[0]
+    assert row["sub_loss_per_att_s"] == pytest.approx(expected)
+    assert row["idx_sub_def"] == pytest.approx(
+        100 * row["b_sub_loss_per_att"] / row["sub_loss_per_att_s"]
+    )
+    debut = s.set_index(["bout_id", "fighter_id"]).loc[("b1", "a")]
+    assert debut["stat_sub_losses"] == 0 and debut["opp_sub_att"] == 0
+
+
+def test_sub_loss_without_recorded_attempt_is_capped(snap):
+    # In the base history d finishes a by submission in b4 with no attempt recorded.
+    row = snap.loc[("u", "a")]
+    assert row["sub_losses"] == 1
+    assert row["stat_sub_losses"] == 0
+
+
+def test_future_fights_never_change_past_snapshots(con):
+    """Look-ahead guard for every snapshot column, including strength of schedule and indices:
+    rewriting all fights after a cutoff must leave snapshots up to the cutoff unchanged."""
+    import duckdb
+
+    from tests.conftest import synthetic_history
+
+    hist = synthetic_history(n_bouts=240, seed=3)
+    cutoff = sorted({e.date for e in hist.events})[20]
+    upsert.upsert_history(con, hist)
+    before, _ = snapshots.build_snapshots(con)
+
+    late = {
+        b.bout_id
+        for b in hist.bouts
+        if next(e.date for e in hist.events if e.event_id == b.event_id) > cutoff
+    }
+    altered = [
+        r.model_copy(update={"sig_l": 40, "sig_a": 41, "td_l": 3, "td_a": 3, "ctrl_s": 299})
+        if r.bout_id in late
+        else r
+        for r in hist.rounds
+    ]
+    con2 = duckdb.connect(":memory:")
+    from fightdb.db.conn import init_db
+
+    init_db(con2)
+    upsert.upsert_history(con2, hist.model_copy(update={"rounds": altered}))
+    after, _ = snapshots.build_snapshots(con2)
+
+    early = (
+        before[before["date"] <= pd.Timestamp(cutoff)]
+        .set_index(["bout_id", "fighter_id"])
+        .sort_index()
+    )
+    early_after = after.set_index(["bout_id", "fighter_id"]).loc[early.index].sort_index()
+    cols = [c for c in early.columns if c.startswith(("sos_", "idx_", "slpm", "td_acc"))]
+    assert {"sos_str_leak", "idx_str_off", "idx_str_off_raw"} <= set(cols)
+    pd.testing.assert_frame_equal(early[cols], early_after[cols])
+    # ...and the rewrite does reach later snapshots, so the test can fail.
+    later = before[before["date"] > pd.Timestamp(cutoff)].set_index(["bout_id", "fighter_id"]).index
+    assert (
+        not before.set_index(["bout_id", "fighter_id"])
+        .loc[later, "slpm"]
+        .equals(after.set_index(["bout_id", "fighter_id"]).loc[later, "slpm"])
+    )
+
+
+def test_schedule_adjustment_direction():
+    from fightdb.models import ratings
+
+    s = pd.DataFrame(
+        {
+            "idx_str_off": [100.0, 100.0],
+            "idx_str_def": [100.0, 100.0],
+            "idx_wrest_off": [100.0, 100.0],
+            "idx_wrest_def": [100.0, 100.0],
+            # first fighter faced leaky, dangerous opponents; second faced average ones
+            "sos_str_leak": [1.25, 1.0],
+            "sos_str_threat": [1.2, 1.0],
+            "sos_td_leak": [1.25, 1.0],
+            "sos_td_threat": [1.2, 1.0],
+        }
+    )
+    out = ratings.adjust_for_schedule(s)
+    assert out.loc[0, "idx_str_off"] == pytest.approx(80)  # easy opponents: offence counts less
+    assert out.loc[0, "idx_str_def"] == pytest.approx(
+        120
+    )  # dangerous opponents: defence counts more
+    assert out.loc[1, "idx_wrest_off"] == 100 and out.loc[0, "idx_str_off_raw"] == 100

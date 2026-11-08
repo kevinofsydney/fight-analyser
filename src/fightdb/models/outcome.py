@@ -16,6 +16,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss
 from sklearn.preprocessing import StandardScaler
 
+from fightdb.models.ratings import SCHEDULE_ADJUSTED
+
 DIFF_FEATURES = [
     "diff_elo",
     "diff_age_years",
@@ -27,16 +29,29 @@ DIFF_FEATURES = [
     "diff_idx_wrest_off",
     "diff_idx_wrest_def",
     "diff_idx_sub_threat",
+    "diff_idx_sub_def",
     "diff_idx_durability",
     "diff_x_sig_r",
     "diff_x_td_r",
     "diff_x_kd_r",
     "diff_x_ctrl_s_r",
 ]
+# The method model uses the indices *before* the strength-of-schedule adjustment: with the
+# adjusted ones it was more under-confident for big favourites winning decisions. The win model
+# gains from the adjustment (walk-forward Brier 0.2334 -> 0.2322) and stays calibrated.
+# Known gap (2026-11-09): pooled over 2024-2026 the method model's 0.5-0.6 reliability bin
+# predicts ~54% and observes ~67% (n=130), favourites winning on points, so the calibration
+# gate keeps the Bout page's low/medium/high labels hidden. Temperature, Platt and isotonic
+# recalibration, recency weighting, regularisation and interaction terms did not close it.
+METHOD_DIFF_FEATURES = [
+    f"{c}_raw" if c.removeprefix("diff_") in SCHEDULE_ADJUSTED else c for c in DIFF_FEATURES
+]
 # Method model also sees each side's own style levels (not just differences).
 LEVEL_FEATURES = [
     "self_idx_sub_threat",
     "opp_idx_sub_threat",
+    "self_idx_sub_def",
+    "opp_idx_sub_def",
     "self_idx_durability",
     "opp_idx_durability",
     "self_kd_p15_s",
@@ -45,6 +60,18 @@ LEVEL_FEATURES = [
     "opp_x_kd_r",
     "self_x_ctrl_s_r",
     "opp_x_ctrl_s_r",
+    # How each side's fights usually end. Without these the model under-predicted favourites
+    # winning decisions (0.4-0.5 bin: 44% predicted, 51% observed on 2024-2026).
+    "self_finish_rate",
+    "opp_finish_rate",
+    "self_ko_losses",
+    "opp_ko_losses",
+    "self_sub_losses",
+    "opp_sub_losses",
+    "self_age_years",
+    "opp_age_years",
+    "self_distance_rate",
+    "opp_distance_rate",
 ]
 METHOD_CLASSES = ["win_ko", "win_sub", "win_dec", "loss_ko", "loss_sub", "loss_dec"]
 _MIRROR = {
@@ -57,6 +84,8 @@ _MIRROR = {
 }
 TRAIN_FROM_YEAR = 2005
 FIRST_TEST_YEAR = 2012
+WIN_MODEL = "win_logistic"
+METHOD_MODEL = "method_multinomial"
 
 
 def add_matchup_diffs(s: pd.DataFrame) -> pd.DataFrame:
@@ -94,7 +123,7 @@ class FittedModels:
         s = add_matchup_diffs(s)
         xw = self.win_scaler.transform(_matrix(s, DIFF_FEATURES))
         p_win_raw = self.win.predict_proba(xw)[:, 1]
-        xm = self.method_scaler.transform(_matrix(s, DIFF_FEATURES + LEVEL_FEATURES))
+        xm = self.method_scaler.transform(_matrix(s, METHOD_DIFF_FEATURES + LEVEL_FEATURES))
         pm = pd.DataFrame(
             self.method.predict_proba(xm), columns=self.method.classes_, index=s.index
         )
@@ -139,9 +168,12 @@ def fit(train: pd.DataFrame) -> FittedModels:
 
     lab = _method_label(decided)
     m = decided[lab.notna()]
-    ms = StandardScaler().fit(_matrix(m, DIFF_FEATURES + LEVEL_FEATURES))
+    ms = StandardScaler().fit(_matrix(m, METHOD_DIFF_FEATURES + LEVEL_FEATURES))
     method = LogisticRegression(C=0.5, max_iter=3000)
-    method.fit(ms.transform(_matrix(m, DIFF_FEATURES + LEVEL_FEATURES)), lab[lab.notna()])
+    method.fit(
+        ms.transform(_matrix(m, METHOD_DIFF_FEATURES + LEVEL_FEATURES)),
+        lab[lab.notna()],
+    )
     return FittedModels(ws, win, ms, method)
 
 
@@ -176,6 +208,9 @@ def walk_forward(sides: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         p = model.predict(test)
         preds.append(p)
         evals.append(_evaluate(test, p, y))
+        method_eval = _evaluate_method(test, p, y)
+        if method_eval is not None:
+            evals.append(method_eval)
     pred_df = pd.concat(preds, ignore_index=True) if preds else pd.DataFrame()
     return pred_df, pd.DataFrame(evals)
 
@@ -187,7 +222,7 @@ def _evaluate(test: pd.DataFrame, p: pd.DataFrame, year: int) -> dict[str, objec
     pw = np.clip(t["p_win"].to_numpy(dtype=float), 1e-6, 1 - 1e-6)
     mk = t["self_implied_prob"].notna().to_numpy()
     return {
-        "model_name": "win_logistic",
+        "model_name": WIN_MODEL,
         "test_year": int(year),
         "n": int(len(t)),
         "brier": float(brier_score_loss(y, pw)),
@@ -201,5 +236,90 @@ def _evaluate(test: pd.DataFrame, p: pd.DataFrame, year: int) -> dict[str, objec
         else None,
         "brier_model_on_market_rows": float(brier_score_loss(y[mk], pw[mk])) if mk.sum() else None,
         "n_market": int(mk.sum()),
-        "reliability": json.dumps(_reliability(y, pw)),
+        # Reliability over both sides of each bout: the model ignores corners on purpose (the
+        # A/red corner is usually the favourite), and its probabilities are shown per fighter.
+        "reliability": json.dumps(_reliability(np.r_[y, 1 - y], np.r_[pw, 1 - pw])),
     }
+
+
+def method_probabilities(
+    test: pd.DataFrame, p: pd.DataFrame, a_side_only: bool = True
+) -> tuple[np.ndarray, np.ndarray]:
+    """(labels, probabilities) for the six method classes, one row per decisive bout (A side), or
+    one per bout side with `a_side_only=False`.
+
+    A side's "loss_*" probabilities are its opponent's "win_*" probabilities, so rows sum to 1.
+    """
+    cols = ["p_win_ko", "p_win_sub", "p_win_dec"]
+    t = test.merge(p[["bout_id", "fighter_id", *cols]], on=["bout_id", "fighter_id"])
+    opp = p[["bout_id", "fighter_id", *cols]].rename(
+        columns={"fighter_id": "opp_id", **{c: f"o_{c}" for c in cols}}
+    )
+    t = t.merge(opp, on=["bout_id", "opp_id"], how="left")
+    if a_side_only:
+        t = t[t["is_a"]]
+    lab = _method_label(t)
+    keep = lab.notna().to_numpy()
+    probs = t[[*cols, *(f"o_{c}" for c in cols)]].to_numpy(dtype=float)[keep]
+    labels = lab[keep].to_numpy()
+    ok = ~np.isnan(probs).any(axis=1)
+    return labels[ok], probs[ok]
+
+
+def _evaluate_method(test: pd.DataFrame, p: pd.DataFrame, year: int) -> dict[str, object] | None:
+    labels, probs = method_probabilities(test, p)
+    if len(labels) == 0:
+        return None
+    onehot = (labels[:, None] == np.array(METHOD_CLASSES)[None, :]).astype(float)
+    probs = np.clip(probs, 1e-6, 1.0)
+    probs = probs / probs.sum(axis=1, keepdims=True)
+    return {
+        "model_name": METHOD_MODEL,
+        "test_year": int(year),
+        "n": int(len(labels)),
+        "brier": float(((probs - onehot) ** 2).sum(axis=1).mean()),
+        "log_loss": float(-np.log((probs * onehot).sum(axis=1)).mean()),
+        "accuracy": float((probs.argmax(axis=1) == onehot.argmax(axis=1)).mean()),
+        "brier_baseline": float(((onehot.mean(axis=0) - onehot) ** 2).sum(axis=1).mean()),
+        "reliability": json.dumps(_method_reliability(test, p)),
+    }
+
+
+def _method_reliability(test: pd.DataFrame, p: pd.DataFrame) -> list[dict[str, float]]:
+    labels, probs = method_probabilities(test, p, a_side_only=False)
+    onehot = (labels[:, None] == np.array(METHOD_CLASSES)[None, :]).astype(float)
+    probs = np.clip(probs, 1e-6, 1.0)
+    probs = probs / probs.sum(axis=1, keepdims=True)
+    return _reliability(onehot.ravel(), probs.ravel())
+
+
+def is_calibrated(
+    evals: pd.DataFrame,
+    model_name: str,
+    recent_years: int = 3,
+    tol: float = 0.05,
+    min_n: int = 100,
+) -> bool:
+    """True when every well-populated reliability bin of the recent test years is within `tol`.
+
+    Bins are pooled across the years so that each has enough bouts to judge.
+    """
+    ev = evals[evals["model_name"] == model_name]
+    if ev.empty:
+        return False
+    ev = ev.sort_values("test_year").tail(recent_years)
+    bins = pd.concat(
+        [pd.DataFrame(json.loads(r)) for r in ev["reliability"] if r], ignore_index=True
+    )
+    if bins.empty:
+        return False
+    pooled = (
+        bins.assign(sp=bins.mean_pred * bins.n, so=bins.mean_obs * bins.n)
+        .groupby("bin")[["sp", "so", "n"]]
+        .sum()
+    )
+    pooled = pooled[pooled["n"] >= min_n]
+    if pooled.empty:
+        return False
+    gap = (pooled["sp"] - pooled["so"]).abs() / pooled["n"]
+    return bool((gap <= tol).all())

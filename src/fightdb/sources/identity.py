@@ -32,6 +32,27 @@ def normalise_name(name: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def name_key(name: str) -> str:
+    """Normalised name with its tokens sorted, so "Yoo Joo-sang" == "Joo-sang Yoo"."""
+    return " ".join(sorted(normalise_name(name).replace("-", " ").split()))
+
+
+def same_matchup(a1: str, b1: str, a2: str, b2: str) -> bool:
+    """Do two listings describe the same bout? Exact names in any order, or one fighter the same
+    and the other sharing a surname ("Bia Mesquita" vs "Beatriz Mesquita")."""
+    x, y = sorted((name_key(a1), name_key(b1))), sorted((name_key(a2), name_key(b2)))
+    if x == y:
+        return True
+    for i in (0, 1):
+        for j in (0, 1):
+            if x[i] == y[j] and x[i]:
+                other_x, other_y = x[1 - i], y[1 - j]
+                surname = normalise_name(other_x).split()[-1:] if other_x else []
+                if surname and len(surname[0]) >= 3 and surname[0] in other_y.split():
+                    return True
+    return False
+
+
 def is_placeholder(name: str) -> bool:
     """ESPN lists unannounced opponents as 'TBA' / 'Opponent TBA'."""
     return bool(re.fullmatch(r"(opponent\s+)?(tba|tbd)", name.strip().lower()))
@@ -46,7 +67,7 @@ def load_overrides(path: Path) -> dict[str, str]:
     """`fighter_identity.yaml`: {espn: {<espn_id>: <fighter_id>}}."""
     if not path.exists():
         return {}
-    data = yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {str(k): str(v) for k, v in (data.get("espn") or {}).items()}
 
 
@@ -75,11 +96,16 @@ class FighterMatcher:
         self.names = list(self.by_name.keys())
 
     def match(
-        self, espn_id: str, name: str, record: str | None = None, division: str | None = None
+        self,
+        espn_id: str | None,
+        name: str,
+        record: str | None = None,
+        division: str | None = None,
     ) -> Match:
-        if espn_id in self.overrides:
+        """`espn_id` is None for sources without athlete IDs: overrides and aliases are skipped."""
+        if espn_id is not None and espn_id in self.overrides:
             return Match(self.overrides[espn_id], "override")
-        if espn_id in self.aliases:
+        if espn_id is not None and espn_id in self.aliases:
             return Match(self.aliases[espn_id], "alias")
         key = normalise_name(name)
         if key in self.by_name:

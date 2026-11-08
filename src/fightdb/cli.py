@@ -172,9 +172,10 @@ def model_eval() -> None:
 
     with open_db(get_settings().db_path, read_only=True) as con:
         df = con.execute(
-            """SELECT test_year, n, round(brier, 4) AS brier, round(brier_model_on_market_rows, 4) AS brier_same_rows,
-                      round(brier_market, 4) AS brier_market, n_market, round(accuracy, 3) AS accuracy
-               FROM model_evals ORDER BY test_year"""
+            """SELECT model_name, test_year, n, round(brier, 4) AS brier, round(brier_model_on_market_rows, 4) AS brier_same_rows,
+                      round(brier_market, 4) AS brier_market, n_market, round(accuracy, 3) AS accuracy,
+                      round(log_loss, 4) AS log_loss
+               FROM model_evals ORDER BY model_name DESC, test_year"""
         ).df()
     typer.echo(df.to_string(index=False))
 

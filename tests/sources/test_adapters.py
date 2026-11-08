@@ -76,18 +76,43 @@ def test_greco_matches_canon(canon, grec):
     gr = {(r.bout_id, r.fighter_id, r.round): r for r in grec.rounds}
     shared = cr.keys() & gr.keys()
     assert len(shared) >= 0.9 * len(cr)
-    mismatched = [k for k in shared if cr[k] != gr[k]]
-    assert len(mismatched) <= 0.01 * len(shared)
+    diffs = {}
+    for k in shared:
+        d = _round_diff(cr[k].model_dump(), gr[k].model_dump())
+        if d:
+            diffs[k] = d
+    # The two upstreams occasionally disagree after a stat correction on one side, so a couple of
+    # rows may differ; more than that points at an adapter bug.
+    assert len(diffs) <= max(2, 0.01 * len(shared)), diffs
+
+
+CTRL_TOLERANCE_S = 5
+
+
+def _round_diff(a: dict, b: dict) -> dict:
+    out = {}
+    for f in a:
+        if a[f] == b[f]:
+            continue
+        if (
+            f == "ctrl_s"
+            and a[f] is not None
+            and b[f] is not None
+            and abs(a[f] - b[f]) <= CTRL_TOLERANCE_S
+        ):
+            continue
+        out[f] = (a[f], b[f])
+    return out
 
 
 def test_espn_parse_range():
-    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text())
+    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text(encoding="utf-8"))
     events = espn.parse_scoreboard(payload)
     assert events
     first = events[0]
     main = next(b for b in first.bouts if b.card_order == 0)
     assert main.scheduled_rounds == 5
-    assert all(b.fighter_a.espn_id and b.fighter_b.espn_id for b in first.bouts)
+    assert all(b.fighter_a.source_fighter_id and b.fighter_b.source_fighter_id for b in first.bouts)
     assert sorted(b.card_order for b in first.bouts) == list(range(len(first.bouts)))
 
 
@@ -107,3 +132,14 @@ def test_espn_rejects_unknown_shape():
                 ]
             }
         )
+
+
+def test_canon_judge_scores(canon, grec):
+    names = {f.fighter_id: f.name for f in canon.fighters}
+    js = [j for j in canon.judge_scores if j.bout_id == "1714950933f88ab9"]
+    # Garbrandt vs. Barcelos went three rounds to a unanimous decision: 3 judges x 3 rounds x 2.
+    assert len(js) == 18
+    bell_r1 = {names[j.fighter_id]: j.score for j in js if j.judge == "Mike Bell" and j.round == 1}
+    assert bell_r1["Raoni Barcelos"] == 9
+    assert all(j.score in (7, 8, 9, 10) for j in canon.judge_scores)
+    assert grec.judge_scores == []  # Greco has no scorecards

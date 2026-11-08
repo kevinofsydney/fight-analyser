@@ -9,7 +9,7 @@ import duckdb
 
 
 def _sql(name: str) -> str:
-    return resources.files("fightdb.db").joinpath(name).read_text()
+    return resources.files("fightdb.db").joinpath(name).read_text(encoding="utf-8")
 
 
 def connect(path: str | Path, read_only: bool = False) -> duckdb.DuckDBPyConnection:

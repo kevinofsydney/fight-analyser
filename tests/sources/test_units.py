@@ -67,7 +67,7 @@ def test_every_fixture_weight_class_maps():
             "SELECT DISTINCT weight_class FROM fights f JOIN events e USING (event_id) WHERE promotion = 'UFC' AND e.date > '2000-01-01'"
         )
     ]
-    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text())
+    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text(encoding="utf-8"))
     labels += [
         c["type"]["abbreviation"]
         for e in payload["events"]

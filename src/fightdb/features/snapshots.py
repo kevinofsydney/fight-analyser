@@ -28,6 +28,7 @@ COUNT_COLS = [
     "dec_wins",
     "ko_losses",
     "sub_losses",
+    "stat_sub_losses",
     "seconds",
     "stat_seconds",
     "kd",
@@ -107,6 +108,9 @@ def _history_rows(sides: pd.DataFrame) -> pd.DataFrame:
     h["stat_seconds"] = np.where(stats, h["seconds"], 0)
     for c in STAT_COLS + [f"opp_{c}" for c in STAT_COLS]:
         h[c] = np.where(stats, h[c].fillna(0), 0)
+    # Submission losses counted only where attempts are known, capped at the attempts faced so
+    # the rate stays a proportion (a few old fights record a sub finish with no attempt).
+    h["stat_sub_losses"] = np.minimum(np.where(stats, h["sub_losses"], 0), h["opp_sub_att"])
     # Pace: only fights that completed round 3 (went past it, or went the distance).
     went_r3 = stats & ((h["end_round"] > 3) | ((h["end_round"] == 3) & (mg == "dec")))
     h["pace_r1"] = np.where(went_r3, h["r1_sig_l"].fillna(0), 0)
@@ -172,6 +176,7 @@ BASE_COLS = [
     "sub_att",
     "ctrl_s",
     "ko_losses",
+    "stat_sub_losses",
     "pace_r1",
     "pace_r3",
 ]
@@ -232,6 +237,8 @@ def _division_baselines(h: pd.DataFrame, queries: pd.DataFrame) -> pd.DataFrame:
         b["b_kd_per_sig"] = w["kd"] / w["sig_l"]
         b["b_ctrl_per_td"] = w["ctrl_s"] / w["td_l"]
         b["b_ko_loss_rate"] = w["ko_losses"] / w["fights"]
+        # Pooled over a division, sub attempts faced = sub attempts made.
+        b["b_sub_loss_per_att"] = w["stat_sub_losses"] / w["sub_att"]
         b["b_pace"] = w["pace_r3"] / w["pace_r1"]
     return b.replace([np.inf, -np.inf], np.nan).reset_index()
 
@@ -251,7 +258,12 @@ _PRIOR_SPECS = {
     "kd_pm": ("rate", "kd", "minutes", 5),
     "kd_per_sig": ("prop", "kd", "sig_l", 20),
     "kd_abs_per_sig": ("prop", "opp_kd", "opp_sig_l", 20),
+    "sub_loss_per_att": ("prop", "stat_sub_losses", "opp_sub_att", 3),
 }
+# A submission loss ends the fight, so there is at most one per fight however many attempts came
+# before it. Fight-level counts are then not binomial in attempts, and the overdispersion estimate
+# (about 3.4 on real data) would push k to its cap and flatten every fighter to the average.
+_NO_OVERDISPERSION = {"sub_loss_per_att"}
 
 
 def compute_priors(career_final: pd.DataFrame, fights: pd.DataFrame) -> dict[str, float]:
@@ -261,7 +273,7 @@ def compute_priors(career_final: pd.DataFrame, fights: pd.DataFrame) -> dict[str
     f = fights[fights["stat_seconds"] > 0].assign(minutes=lambda d: d["stat_seconds"] / 60)
     out: dict[str, float] = {}
     for name, (kind, x, t, min_t) in _PRIOR_SPECS.items():
-        phi = shrinkage.overdispersion(f, x, t, kind)
+        phi = 1.0 if name in _NO_OVERDISPERSION else shrinkage.overdispersion(f, x, t, kind)
         if kind == "prop":
             out[name] = shrinkage.estimate_k_proportion(c[x], c[t], min_n=min_t, phi=phi)
         else:
@@ -269,6 +281,25 @@ def compute_priors(career_final: pd.DataFrame, fights: pd.DataFrame) -> dict[str
     out["ctrl_per_td"] = 5.0
     out["pace"] = 30.0
     return out
+
+
+def _priors_by_year(
+    s: pd.DataFrame, h: pd.DataFrame, career: pd.DataFrame
+) -> tuple[dict[str, pd.Series], dict[str, float]]:
+    """Shrinkage prior strengths estimated walk-forward: a bout in year Y uses k fitted on fights
+    before 1 January of Y only, so even the hyperparameters carry no look-ahead. Returns per-row
+    k values aligned to `s`, plus the latest year's k (shown on the Status page)."""
+    years = sorted(int(y) for y in s["date"].dt.year.dropna().unique())
+    table: dict[int, dict[str, float]] = {}
+    for y in years:
+        cut = pd.Timestamp(year=y, month=1, day=1)
+        before = career[career["date"] < cut]
+        final = before.sort_values("date").groupby("fighter_id").tail(1)
+        table[y] = compute_priors(final, h[h["date"] < cut])
+    k = pd.DataFrame.from_dict(table, orient="index")
+    row_years = s["date"].dt.year.to_numpy()
+    rows = {name: pd.Series(k.loc[row_years, name].to_numpy(), index=s.index) for name in k.columns}
+    return rows, table[years[-1]] if years else compute_priors(career.iloc[0:0], h.iloc[0:0])
 
 
 def build_snapshots(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, dict[str, float]]:
@@ -287,9 +318,8 @@ def build_snapshots(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, dict[
     base = _division_baselines(h, q)
     s = s.merge(base, on=["bout_id", "fighter_id"], how="left")
 
-    final = career.sort_values("date").groupby("fighter_id").tail(1)
-    priors = compute_priors(final, h)
-    s = _derive(s, priors)
+    k_rows, priors = _priors_by_year(s, h, career)
+    s = _derive(s, k_rows)
 
     elo_hist, elo_now = ratings.compute_elo(
         _completed_bouts(con).assign(date=lambda d: pd.to_datetime(d["date"]))
@@ -303,7 +333,77 @@ def build_snapshots(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, dict[
     s["elo"] = s["elo"].fillna(ratings.ELO_START)
 
     s = ratings.add_indices(s)
+    s = _strength_of_schedule(s, h)
+    s = ratings.adjust_for_schedule(s)
     return s.drop(columns=["status", "opp_id"]), priors
+
+
+# Minutes of neutral (factor 1.0) schedule every fighter starts with, so one or two fights
+# against unusual opponents don't swing the adjustment.
+SOS_PRIOR_MINUTES = 30.0
+
+
+def _strength_of_schedule(s: pd.DataFrame, h: pd.DataFrame) -> pd.DataFrame:
+    """Average quality of the opponents each fighter has faced, as of each bout.
+
+    For every past fight we take the *opponent's* snapshot from before that fight (so nothing
+    after it leaks in): how leaky their striking / takedown defence was and how dangerous their
+    striking / wrestling offence was, each relative to the division average (1.0 = average).
+    These are averaged over the fighter's earlier fights, weighted by minutes, and shrunk towards
+    1.0. Only fights on strictly earlier dates count, as for every other snapshot feature.
+    """
+    s = s.copy()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        f = pd.DataFrame(
+            {
+                "bout_id": s["bout_id"],
+                "opp_id": s["fighter_id"],
+                "f_str_leak": s["sapm_s"] / s["b_slpm"],
+                "f_str_threat": s["slpm_s"] / s["b_slpm"],
+                "f_td_leak": s["td_allowed_s"] / s["b_td_acc"],
+                "f_td_threat": s["td_att_p15_s"] * s["td_acc_s"] / s["b_td_p15"],
+            }
+        )
+    factors = ["f_str_leak", "f_str_threat", "f_td_leak", "f_td_threat"]
+    f[factors] = f[factors].replace([np.inf, -np.inf], np.nan)
+
+    fights = h.loc[
+        h["stat_seconds"] > 0, ["bout_id", "fighter_id", "opp_id", "date", "stat_seconds"]
+    ]
+    fights = fights.merge(f, on=["bout_id", "opp_id"], how="left")
+    fights["m"] = fights["stat_seconds"] / 60
+    for c in factors:
+        fights[f"{c}_m"] = fights[c].fillna(1.0) * fights["m"]
+    cols = ["m", *(f"{c}_m" for c in factors)]
+    day = fights.groupby(["fighter_id", "date"], as_index=False)[cols].sum()
+    day = day.sort_values(["fighter_id", "date"])
+    day[cols] = day.groupby("fighter_id")[cols].cumsum()
+
+    q = s[["bout_id", "fighter_id", "date"]]
+    got = _asof(q, day, by="fighter_id").set_index(["bout_id", "fighter_id"])
+    got = got.reindex(pd.MultiIndex.from_frame(s[["bout_id", "fighter_id"]]))
+
+    # The typical schedule isn't exactly 1.0 (fighters who last face tougher-than-baseline
+    # opposition), so re-centre on the minutes-weighted average over all fights in the trailing
+    # baseline window. Computed from earlier dates only, like the division baselines.
+    league = fights.groupby("date", as_index=False)[cols].sum().sort_values("date")
+    league[cols] = league[cols].cumsum()
+    league = league.assign(grp=0)
+    qq = q.assign(grp=0, date_start=q["date"] - BASELINE_WINDOW)
+    end = _asof(qq, league, by="grp").set_index(["bout_id", "fighter_id"])
+    start = _asof(qq, league, by="grp", left_on="date_start").set_index(["bout_id", "fighter_id"])
+    idx = pd.MultiIndex.from_frame(s[["bout_id", "fighter_id"]])
+    window = end[cols].reindex(idx).fillna(0) - start[cols].reindex(idx).fillna(0)
+
+    m = got["m"].fillna(0).to_numpy()
+    for c in factors:
+        cum = got[f"{c}_m"].fillna(0).to_numpy()
+        own = (cum + SOS_PRIOR_MINUTES) / (m + SOS_PRIOR_MINUTES)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            typical = (window[f"{c}_m"] / window["m"]).to_numpy()
+        typical = np.where(np.isfinite(typical) & (typical > 0), typical, 1.0)
+        s["sos_" + c[2:]] = own / typical
+    return s
 
 
 def _completed_bouts(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
@@ -314,7 +414,7 @@ def _completed_bouts(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     ).df()
 
 
-def _derive(s: pd.DataFrame, k: dict[str, float]) -> pd.DataFrame:
+def _derive(s: pd.DataFrame, k: dict[str, pd.Series]) -> pd.DataFrame:
     s = s.copy()
     mins = s["stat_seconds"] / 60
     has = mins > 0
@@ -329,6 +429,9 @@ def _derive(s: pd.DataFrame, k: dict[str, float]) -> pd.DataFrame:
         s["finish_rate"] = np.where(
             s["wins"] > 0, (s["ko_wins"] + s["sub_wins"]) / s["wins"], np.nan
         )
+        finishes = s["ko_wins"] + s["sub_wins"] + s["ko_losses"] + s["sub_losses"]
+        scored = s["fights"] - s["ncs"]
+        s["distance_rate"] = np.where(scored > 0, 1 - finishes / scored, np.nan)
         s["streak"] = s["streak"].fillna(0)
         s["days_since_last"] = (s["date"] - s["last_date"]).dt.days
         s["cage_minutes"] = s["seconds"] / 60
@@ -372,6 +475,9 @@ def _derive(s: pd.DataFrame, k: dict[str, float]) -> pd.DataFrame:
     s["kd_p15_s"] = 15 * sh(s["kd"], mins, s["b_kd_pm"], k["kd_pm"])
     s["kd_per_sig_s"] = sh(s["kd"], s["sig_l"], s["b_kd_per_sig"], k["kd_per_sig"])
     s["kd_abs_per_sig_s"] = sh(s["opp_kd"], s["opp_sig_l"], s["b_kd_per_sig"], k["kd_abs_per_sig"])
+    s["sub_loss_per_att_s"] = sh(
+        s["stat_sub_losses"], s["opp_sub_att"], s["b_sub_loss_per_att"], k["sub_loss_per_att"]
+    )
     s["ctrl_per_td_s"] = sh(s["ctrl_s"], s["td_l"], s["b_ctrl_per_td"], k["ctrl_per_td"])
     s["pace_s"] = sh(s["pace_r3"], s["pace_r1"], s["b_pace"], k["pace"])
     return s

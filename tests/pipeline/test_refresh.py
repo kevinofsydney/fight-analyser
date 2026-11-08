@@ -22,7 +22,7 @@ def _no_network() -> httpx.Client:
 
 
 def _upcoming(mutate=None):
-    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text())
+    payload = json.loads((FIXTURES / "espn" / "scoreboard_range.json").read_text(encoding="utf-8"))
     if mutate:
         mutate(payload)
     return lambda client, today: espn.parse_scoreboard(payload)
@@ -121,3 +121,123 @@ def test_espn_failure_keeps_history(settings):
     report = _run(settings, broken)
     assert report["counts"]["bouts"] > 0
     assert any("upcoming cards failed" in w for w in report["warnings"])
+
+
+def _scheduled(settings):
+    con = duckdb.connect(str(settings.db_path), read_only=True)
+    try:
+        return con.execute(
+            """SELECT b.bout_id, b.event_id, fa.name, fb.name FROM bouts b
+               JOIN fighters fa ON fa.fighter_id = b.fighter_a_id
+               JOIN fighters fb ON fb.fighter_id = b.fighter_b_id
+               WHERE b.status = 'scheduled' ORDER BY 1"""
+        ).fetchall()
+    finally:
+        con.close()
+
+
+def test_wikipedia_fallback_then_espn_returns(settings):
+    from fightdb.sources import wikipedia
+
+    espn_events = _upcoming()(None, TODAY)
+    _run(settings, _upcoming())
+    before = _scheduled(settings)
+    first = espn_events[0]
+    known = first.bouts[0]
+
+    def broken(client, today):
+        raise espn.EspnFormatError("shape changed")
+
+    def wiki(client, today):
+        return [
+            wikipedia.WikiEvent(
+                "Some page",
+                first.name,
+                first.date,
+                None,
+                (
+                    # Already stored (names differ only in case): must not be duplicated.
+                    wikipedia.WikiBout("x", known.fighter_a.name.upper(), known.fighter_b.name, 0),
+                    wikipedia.WikiBout("Lightweight", "New Guy", "Other Guy", 1),
+                ),
+            ),
+            wikipedia.WikiEvent("UFC 999", "UFC 999", date(2027, 6, 1), None, ()),
+        ]
+
+    report = run_refresh(
+        settings,
+        file=FIXTURES / "canon_mini.db",
+        client=_no_network(),
+        fetch_upcoming=broken,
+        check_wikipedia=wiki,
+        today=TODAY,
+        train_models=False,
+    )
+    assert any("used Wikipedia fallback" in w for w in report["warnings"])
+    assert sorted(report["card_changes"]) == sorted(
+        [
+            f"Added (via wikipedia): New Guy vs. Other Guy ({first.name})",
+            "New event (via wikipedia): UFC 999 (2027-06-01)",
+        ]
+    )
+    after = _scheduled(settings)
+    assert set(before) < set(after)  # nothing stored was cancelled or rewritten
+    added = [r for r in after if r not in before]
+    assert len(added) == 1 and added[0][1] == f"espn:{first.source_event_id}"
+
+    # ESPN is back: the Wikipedia-only bout isn't on ESPN, so the primary source cancels it,
+    # but the bout both sources had is untouched and nothing is double-reported.
+    back = _run(settings, _upcoming())
+    assert sorted(back["card_changes"]) == [
+        f"Cancelled: New Guy vs. Other Guy ({first.name})",
+        "Event no longer listed: UFC 999",
+    ]
+    assert set(before) <= set(_scheduled(settings))
+
+
+def test_espn_back_adopts_fallback_event(settings):
+    """An event first seen only on Wikipedia is merged into ESPN's event for that date."""
+    from fightdb.sources import wikipedia
+
+    espn_events = _upcoming()(None, TODAY)
+    last = espn_events[-1]
+
+    def without_last(p):
+        p["events"].pop()
+
+    _run(settings, _upcoming(without_last))
+
+    def broken(client, today):
+        raise espn.EspnFormatError("down")
+
+    bout = last.bouts[0]
+    run_refresh(
+        settings,
+        file=FIXTURES / "canon_mini.db",
+        client=_no_network(),
+        fetch_upcoming=broken,
+        check_wikipedia=lambda c, t: [
+            wikipedia.WikiEvent(
+                "P",
+                last.name,
+                last.date,
+                None,
+                (wikipedia.WikiBout("x", bout.fighter_a.name, bout.fighter_b.name, 0),),
+            )
+        ],
+        today=TODAY,
+        train_models=False,
+    )
+    back = _run(settings, _upcoming())
+    # The event is not reported as cancelled + re-added, and the shared bout isn't either.
+    assert not any("no longer listed" in c for c in back["card_changes"])
+    assert not any(
+        f"{bout.fighter_a.name} vs. {bout.fighter_b.name}" in c for c in back["card_changes"]
+    )
+    con = duckdb.connect(str(settings.db_path), read_only=True)
+    try:
+        assert con.execute(
+            "SELECT count(*) FROM events WHERE starts_with(event_id, 'wikipedia:')"
+        ).fetchone() == (0,)
+    finally:
+        con.close()

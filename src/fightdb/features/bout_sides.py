@@ -11,6 +11,7 @@ import pandas as pd
 
 from fightdb.features.stat_meta import feature_keys
 from fightdb.models.matchup import MATCHUP_COLS
+from fightdb.models.ratings import SCHEDULE_ADJUSTED
 
 _BOUTS_SQL = """
 SELECT b.bout_id, b.event_id, e.name AS event_name, e.date AS event_date, e.location,
@@ -20,6 +21,63 @@ SELECT b.bout_id, b.event_id, e.name AS event_name, e.date AS event_date, e.loca
 FROM bouts b JOIN events e USING (event_id)
 WHERE b.status IN ('scheduled', 'completed') AND e.date IS NOT NULL
 """
+
+
+# Days between a fighter first appearing on an event's card (ESPN) and the event. Only known for
+# fighters added after card tracking began; those already on the card at the first import get NULL
+# (unknown), never 0. Completed bouts are linked to the ESPN bout from the same night by fighter,
+# or, for debutants ESPN listed without a UFC history ("tba:" IDs), by their opponent.
+_NOTICE_SQL = """
+WITH espn AS (
+    SELECT b.bout_id, b.event_id, e.date, b.fighter_a_id AS fa, b.fighter_b_id AS fb,
+           b.first_seen_at, b.status
+    FROM bouts b JOIN events e USING (event_id)
+    WHERE b.bout_id LIKE 'espn:%' AND e.date IS NOT NULL
+),
+start AS (SELECT CAST(min(first_seen_at) AS DATE) AS d FROM espn),
+espn_sides AS (
+    SELECT bout_id, event_id, date, fa AS f, fb AS o, first_seen_at, status FROM espn
+    UNION ALL
+    SELECT bout_id, event_id, date, fb, fa, first_seen_at, status FROM espn
+),
+first_on_card AS (
+    SELECT event_id, f, min(first_seen_at) AS first_seen FROM espn_sides GROUP BY ALL
+),
+notice AS (
+    SELECT s.bout_id, s.f, s.o, s.date, s.status,
+           CASE WHEN CAST(c.first_seen AS DATE) > (SELECT d FROM start)
+                THEN date_diff('day', CAST(c.first_seen AS DATE), s.date) END AS days_notice
+    FROM espn_sides s JOIN first_on_card c USING (event_id, f)
+    WHERE s.status <> 'cancelled'
+),
+hist AS (
+    SELECT b.bout_id, e.date, b.fighter_a_id AS f, b.fighter_b_id AS o
+    FROM bouts b JOIN events e USING (event_id)
+    WHERE b.status = 'completed' AND e.date >= (SELECT d FROM start)
+    UNION ALL
+    SELECT b.bout_id, e.date, b.fighter_b_id, b.fighter_a_id
+    FROM bouts b JOIN events e USING (event_id)
+    WHERE b.status = 'completed' AND e.date >= (SELECT d FROM start)
+),
+linked AS (
+    SELECT bout_id, f AS fighter_id, days_notice FROM notice WHERE status = 'scheduled'
+    UNION ALL
+    SELECT h.bout_id, h.f, n.days_notice
+    FROM hist h JOIN notice n ON n.f = h.f AND abs(date_diff('day', n.date, h.date)) <= 1
+    UNION ALL
+    SELECT h.bout_id, h.f, n.days_notice
+    FROM hist h JOIN notice n
+      ON n.o = h.o AND n.f LIKE 'tba:%' AND abs(date_diff('day', n.date, h.date)) <= 1
+)
+SELECT bout_id, fighter_id, max(days_notice) AS days_notice FROM linked GROUP BY ALL
+"""
+SHORT_NOTICE_DAYS = 14
+
+
+def days_notice(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    df = con.execute(_NOTICE_SQL).df()
+    df["days_notice"] = df["days_notice"].astype(float)
+    return df
 
 
 def build_bout_sides(
@@ -58,8 +116,12 @@ def build_bout_sides(
         how="left",
     )
 
+    snap = snap.drop(columns=["days_notice"], errors="ignore").merge(
+        days_notice(con), on=["bout_id", "fighter_id"], how="left"
+    )
     keys = [k for k in feature_keys() if k in snap.columns]
-    extra = [c for c in ("moving_division",) if c in snap.columns]
+    raw_idx = [f"{c}_raw" for c in SCHEDULE_ADJUSTED if f"{c}_raw" in snap.columns]
+    extra = [c for c in ("moving_division", *raw_idx) if c in snap.columns]
     cols = keys + extra
     s_self = snap[["bout_id", "fighter_id", *cols]].rename(columns={k: f"self_{k}" for k in cols})
     s_opp = snap[["bout_id", "fighter_id", *cols]].rename(
@@ -67,7 +129,7 @@ def build_bout_sides(
     )
     sides = sides.merge(s_self, on=["bout_id", "fighter_id"], how="left")
     sides = sides.merge(s_opp, on=["bout_id", "opp_id"], how="left")
-    diffs = {f"diff_{k}": sides[f"self_{k}"] - sides[f"opp_{k}"] for k in keys}
+    diffs = {f"diff_{k}": sides[f"self_{k}"] - sides[f"opp_{k}"] for k in keys + raw_idx}
     sides = pd.concat([sides, pd.DataFrame(diffs)], axis=1)
 
     if proj is not None and not proj.empty:
@@ -87,6 +149,11 @@ def build_bout_sides(
     sides = sides.merge(odds, on=["bout_id", "fighter_id"], how="left")
 
     sides = _outcomes(sides)
+    for p in ("self", "opp"):
+        known = sides[f"{p}_days_notice"].notna()
+        sides[f"{p}_short_notice"] = np.where(
+            known, (sides[f"{p}_days_notice"] < SHORT_NOTICE_DAYS).astype(float), np.nan
+        )
     sides["self_southpaw"] = (sides["self_stance"] == "Southpaw").astype(int)
     sides["opp_southpaw"] = (sides["opp_stance"] == "Southpaw").astype(int)
     return sides

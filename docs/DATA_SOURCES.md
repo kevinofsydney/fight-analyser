@@ -59,7 +59,7 @@ Daily pipeline:
 | Kaggle UFC datasets | ❌ | Mostly stale snapshots; Kaggle downloads need an API key. |
 | UFCalendar Fight API | 🤔 v2 option | Commercial API with Python SDK (events, cards, per-round stats, judges' scores, rankings history). Needs an API key (a secret in `.env`); check pricing. A good paid fallback if the free sources die. |
 | Apify UFC scraper actors | ❌ | Pay-per-run hosted scrapers. Unnecessary. |
-| Wikipedia (MediaWiki API) | ✅ Fallback for upcoming cards | Stable, documented API, CC BY-SA content; "UFC on ESPN X" pages list scheduled bouts. Parsing wikitext tables is fiddly but robust. |
+| Wikipedia (MediaWiki API) | ✅ Fallback for upcoming cards when ESPN fails (`sources/wikipedia.py`): adds missing bouts only, never cancels | Stable, documented API, CC BY-SA content; "UFC on ESPN X" pages list scheduled bouts. Parsing wikitext tables is fiddly but robust. |
 | UFC.com | 🤔 | Official card order, but HTML scraping. Consider only if ESPN and Wikipedia both fail. |
 
 ## Design consequences

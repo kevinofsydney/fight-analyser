@@ -91,3 +91,46 @@ def test_outcome_model_is_symmetric(synthetic_db):
     # The planted effect (older fighter wins 70%) should be learned through the age feature.
     older = sides.merge(p, on=["bout_id", "fighter_id"])
     assert older.loc[older["diff_age_years"] > 3, "p_win"].mean() > 0.55
+
+
+def _evals(bins, name=outcome.METHOD_MODEL, years=(2024, 2025, 2026)):
+    import json
+
+    import pandas as pd
+
+    return pd.DataFrame(
+        [{"model_name": name, "test_year": y, "reliability": json.dumps(bins)} for y in years]
+    )
+
+
+def test_is_calibrated_accepts_close_bins():
+    bins = [{"bin": 0.1, "mean_pred": 0.12, "mean_obs": 0.15, "n": 60}]
+    assert outcome.is_calibrated(_evals(bins), outcome.METHOD_MODEL)
+
+
+def test_is_calibrated_rejects_a_well_populated_bad_bin():
+    bins = [
+        {"bin": 0.1, "mean_pred": 0.12, "mean_obs": 0.13, "n": 60},
+        {"bin": 0.3, "mean_pred": 0.30, "mean_obs": 0.38, "n": 50},
+    ]
+    assert not outcome.is_calibrated(_evals(bins), outcome.METHOD_MODEL)
+
+
+def test_is_calibrated_ignores_sparse_bins_and_other_models():
+    bins = [
+        {"bin": 0.1, "mean_pred": 0.12, "mean_obs": 0.13, "n": 60},
+        {"bin": 0.8, "mean_pred": 0.80, "mean_obs": 0.60, "n": 10},
+    ]
+    assert outcome.is_calibrated(_evals(bins), outcome.METHOD_MODEL)
+    assert not outcome.is_calibrated(_evals(bins), outcome.WIN_MODEL)
+
+
+def test_walk_forward_evaluates_method_model(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides").df()
+    sides["year"] = sides["year"] + 2  # synthetic data starts in 2011; tests start in 2012
+    _, evals = outcome.walk_forward(sides)
+    method = evals[evals["model_name"] == outcome.METHOD_MODEL]
+    assert not method.empty
+    assert (method["brier"] > 0).all() and (method["brier"] < 2).all()
+    win = evals[evals["model_name"] == outcome.WIN_MODEL]
+    assert set(method["test_year"]) == set(win["test_year"])

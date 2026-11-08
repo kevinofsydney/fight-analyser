@@ -75,5 +75,7 @@ def estimate_k_rate(x: pd.Series, t: pd.Series, min_t: float = 1.0, phi: float =
     return float(np.clip(mu / between, K_MIN, K_MAX_RATE))
 
 
-def shrink(x: pd.Series, exposure: pd.Series, prior: pd.Series | float, k: float) -> pd.Series:
+def shrink(
+    x: pd.Series, exposure: pd.Series, prior: pd.Series | float, k: pd.Series | float
+) -> pd.Series:
     return (x.fillna(0) + k * prior) / (exposure.fillna(0) + k)

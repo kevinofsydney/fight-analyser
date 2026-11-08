@@ -56,6 +56,27 @@ def add_indices(s: pd.DataFrame) -> pd.DataFrame:
     s["idx_wrest_off"] = _ratio(s["td_att_p15_s"] * s["td_acc_s"], s["b_td_p15"])
     s["idx_wrest_def"] = _ratio(s["b_td_acc"], 1.0 - s["td_def_s"])
     s["idx_sub_threat"] = _ratio(s["sub_att_p15_s"], s["b_sub_p15"])
+    s["idx_sub_def"] = _ratio(s["b_sub_loss_per_att"], s["sub_loss_per_att_s"])
     s["idx_durability"] = _ratio(s["b_kd_per_sig"], s["kd_abs_per_sig_s"])
     s["idx_pace"] = _ratio(s["pace_s"], s["b_pace"])
+    return s
+
+
+SCHEDULE_ADJUSTED = ("idx_str_off", "idx_str_def", "idx_wrest_off", "idx_wrest_def")
+
+
+def adjust_for_schedule(s: pd.DataFrame) -> pd.DataFrame:
+    """Opponent-adjust the striking and wrestling indices (ANALYSIS_IDEAS §1.3).
+
+    Offence is divided by how leaky the opponents' defence was (landing a lot on fighters who
+    get hit a lot counts for less); defence is multiplied by how dangerous the opponents'
+    offence was. `sos_*` columns come from `snapshots._strength_of_schedule`; 1.0 = average.
+    """
+    s = s.copy()
+    for c in SCHEDULE_ADJUSTED:
+        s[f"{c}_raw"] = s[c]
+    s["idx_str_off"] = s["idx_str_off"] / s["sos_str_leak"]
+    s["idx_str_def"] = s["idx_str_def"] * s["sos_str_threat"]
+    s["idx_wrest_off"] = s["idx_wrest_off"] / s["sos_td_leak"]
+    s["idx_wrest_def"] = s["idx_wrest_def"] * s["sos_td_threat"]
     return s
