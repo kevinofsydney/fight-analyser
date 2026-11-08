@@ -78,7 +78,32 @@ def build_all(con: duckdb.DuckDBPyConnection, train_models: bool = True) -> dict
     con.execute(
         "CREATE OR REPLACE VIEW completed_bout_sides AS SELECT * FROM bout_sides WHERE status = 'completed'"
     )
+    con.execute(JUDGE_ROUNDS_VIEW)
     return counts
+
+
+# One row per judge, round and fighter: the judge's margin for that fighter next to the round's
+# stat differences, e.g. "which judges reward control time over striking" (question 28).
+JUDGE_ROUNDS_VIEW = """
+CREATE OR REPLACE VIEW judge_rounds AS
+SELECT j.bout_id, e.date AS event_date, e.name AS event_name, e.location, b.division,
+       j.judge, j.round, j.fighter_id, f.name AS fighter_name, o.fighter_id AS opp_id,
+       j.score, o.score AS opp_score, j.score - o.score AS margin,
+       j.score > o.score AS won_round, j.deduction,
+       r.sig_l - ro.sig_l AS sig_l_diff, r.tot_l - ro.tot_l AS tot_l_diff,
+       r.td_l - ro.td_l AS td_diff, r.ctrl_s - ro.ctrl_s AS ctrl_s_diff,
+       r.kd - ro.kd AS kd_diff, r.sub_att - ro.sub_att AS sub_att_diff,
+       b.winner_id = j.fighter_id AS won_bout, b.method
+FROM judge_scores j
+JOIN judge_scores o
+  ON o.bout_id = j.bout_id AND o.round = j.round AND o.judge = j.judge
+ AND o.fighter_id <> j.fighter_id
+JOIN bouts b ON b.bout_id = j.bout_id
+JOIN events e ON e.event_id = b.event_id
+LEFT JOIN fighters f ON f.fighter_id = j.fighter_id
+LEFT JOIN round_stats r ON r.bout_id = j.bout_id AND r.fighter_id = j.fighter_id AND r.round = j.round
+LEFT JOIN round_stats ro ON ro.bout_id = j.bout_id AND ro.fighter_id = o.fighter_id AND ro.round = j.round
+"""
 
 
 def _insert_evals(con: duckdb.DuckDBPyConnection, evals: pd.DataFrame) -> None:
@@ -96,7 +121,8 @@ def _insert_evals(con: duckdb.DuckDBPyConnection, evals: pd.DataFrame) -> None:
 def summary(con: duckdb.DuckDBPyConnection) -> str:
     row = con.execute(
         """SELECT count(*), avg(brier), avg(brier_market), avg(brier_model_on_market_rows), avg(accuracy)
-           FROM model_evals"""
+           FROM model_evals WHERE model_name = ?""",
+        [outcome.WIN_MODEL],
     ).fetchone()
     return json.dumps(
         {

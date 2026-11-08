@@ -46,7 +46,9 @@ def download(client: httpx.Client, url: str, dest: Path) -> dict[str, str | None
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     meta_path = dest.with_suffix(dest.suffix + ".meta.json")
-    meta: dict[str, str | None] = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta: dict[str, str | None] = (
+        json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    )
     headers = {}
     if dest.exists() and meta.get("etag"):
         headers["If-None-Match"] = str(meta["etag"])
@@ -65,7 +67,7 @@ def download(client: httpx.Client, url: str, dest: Path) -> dict[str, str | None
             "final_url": str(resp.url),
         }
     tmp.replace(dest)
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
     return {**meta, "changed": "true"}
 
 

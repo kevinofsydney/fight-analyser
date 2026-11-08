@@ -44,3 +44,13 @@ def test_fuzzy_rejects_wrong_record(con):
     _seed(con)
     m = identity.FighterMatcher(con)
     assert m.match("6", "Jose Aldoo", record="2-0-0").fighter_id is None
+
+
+def test_same_matchup():
+    from fightdb.sources.identity import name_key, same_matchup
+
+    assert name_key("Yoo Joo-sang") == name_key("Joo-sang Yoo")
+    assert same_matchup("Marwan Rahiki", "Yoo Joo-sang", "Joo-sang Yoo", "Marwan Rahiki")
+    assert same_matchup("Macy Chiasson", "Beatriz Mesquita", "Bia Mesquita", "Macy Chiasson")
+    assert not same_matchup("Macy Chiasson", "Beatriz Mesquita", "Macy Chiasson", "Kayla Harrison")
+    assert not same_matchup("A Smith", "B Jones", "C Brown", "D Jones")

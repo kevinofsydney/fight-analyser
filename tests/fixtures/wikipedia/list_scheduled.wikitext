@@ -1,0 +1,55 @@
+{| id="Scheduled events" class="sortable wikitable succession-box" style="font-size:90%; "
+! scope="col" | Event
+! scope="col" | Date
+! scope="col" | Venue
+! scope="col" | Location 
+! scope="col" | Ref.
+|-
+|[[UFC Fight Night: Salkilld vs. Saint Denis]]
+|{{dts|2027|Feb|7}}
+|[[Sydney SuperDome|Afterpay Arena]]
+|[[Sydney]], Australia
+|<ref>{{Cite web|url=https://www.sportsnet.ca/ufc/article/australia-to-host-ufc-fight-night-in-february/|title=Australia to host UFC Fight Night in February|publisher=sportsnet.ca|author=Staff|date=2026-09-28|access-date=2026-09-29}}</ref>
+|-
+|[[UFC 336|UFC 336: Van vs. Kape]]
+|{{dts|2027|Jan|30}}
+|[[Scotiabank Arena]]
+|[[Toronto, Ontario]], Canada
+|<ref>{{Cite web|url=https://mmajunkie.usatoday.com/story/sports/ufc/2026/10/17/ufc-336-announced-toronto-january-30/92308666007/|title=UFC 336 official for Jan. 30 in Toronto|publisher=mmajunkie.usatoday.com|author=Mike Bohn|date=2026-10-17|access-date=2026-10-17}}</ref>
+|-
+|[[UFC Fight Night 297]]
+|{{dts|2027|Jan|23}}
+|[[to be announced|TBA]] 
+|[[to be announced|TBA]] 
+|<ref>{{Cite web|url=https://www.si.com/fannation/mma/news/ufc-reportedly-targeting-another-january-2027-event-with-major-first-fight-news|title=UFC reportedly targeting another January 2027 event with major first fight news|publisher=si.com|author=Drew Beaupre|date=2026-11-03|access-date=2026-11-04}}</ref>
+|-
+|[[UFC Fight Night 296]]
+|{{dts|2027|Jan|16}}
+|[[American Airlines Center]] 
+|[[Dallas, Texas]], U.S.
+|<ref>{{Cite web|url=https://www.dallasnews.com/sports/other-sports/article/ufc-dallas-american-airlines-center-tickets-22491495.php|title=UFC sets January return to American Airlines Center in Dallas|publisher=dallasnews.com|author=Joey Hayden|date=2026-10-24|access-date=2026-10-25}}</ref>
+|-
+|[[UFC 335|UFC 335: Oliveira vs. Lopes]] 
+|{{dts|2026|Dec|12}}
+|[[T-Mobile Arena]]
+|[[Las Vegas]], [[Nevada]], U.S.
+|<ref name="ufc334335">{{Cite web|url=https://sports.yahoo.com/news/ufc-334-335-announced-dates-010404268.html|title=UFC announces 2 major shows and one has a big sponsor added to the title|publisher=uk.sports.yahoo.com|author=Brian Mazique|date=2026-08-23|access-date=2026-08-23}}</ref>
+|-
+|[[UFC Fight Night 295]]
+|{{dts|2026|Dec|5}}
+|[[ANB Arena]]
+|[[Riyadh]], Saudi Arabia
+|<ref>{{Cite web|url=https://heavy.com/sports/ufc/promising-welterweights-added-ufc-saudi-arabia/|title=Promising welterweights added to UFC Saudi Arabia|publisher=heavy.com|author=Marcel Dorff|date=2026-10-21|access-date=2026-10-22}}</ref>
+|-
+|[[UFC Fight Night: Procházka vs. Stirling]]
+|{{dts|2026|Nov|21}}
+|[[Ali Bin Hamad al-Attiyah Arena]]
+|[[Al Rayyan (city)|Al Rayyan]], Qatar
+|<ref>{{Cite web|url=https://mmajunkie.usatoday.com/story/sports/ufc/2026/08/26/ufc-meta-apex-event-approvals/91468590007/|title=UFC officially adds four more Meta APEX events to 2026 schedule|publisher=mmajunkie.usatoday.com|author=Nolan King|date=2026-08-26|access-date=2026-08-26}}</ref>
+|-
+|[[UFC 334|UFC 334: Gane vs. Hokit]]
+|{{dts|2026|Nov|14}}
+|[[Madison Square Garden]]
+|[[New York City]], [[New York (state)|New York]], U.S.
+|<ref name="ufc334335"/>
+|}

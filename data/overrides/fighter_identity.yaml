@@ -4,4 +4,8 @@
 #
 # espn:
 #   "4418809": "93fe7332d16c6ad9"
-espn: {}
+espn:
+  # Matthieu Letho Duclos (ESPN) = Matthieu Duclos, MW, won at UFC FN Hooker vs. Parnasse 2026-09-05
+  "5013686": "ec322adbabbfa6e7"
+  # Mehemmedeli Osmanli (ESPN) = Mahammadali Osmanli, BW, lost at UFC FN Rosas Jr. vs. Barcelos 2026-09-26
+  "5345640": "2bbdbc925f4323ac"

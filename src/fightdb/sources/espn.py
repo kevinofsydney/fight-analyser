@@ -74,7 +74,7 @@ def _parse_event(ev: dict[str, Any]) -> UpcomingEvent:
     for idx, comp in enumerate(comps):
         bouts.append(_parse_bout(comp, card_order=n - 1 - idx))
     return UpcomingEvent(
-        espn_event_id=str(ev["id"]),
+        source_event_id=str(ev["id"]),
         name=ev["name"],
         date=start.date(),
         location=location,
@@ -94,7 +94,7 @@ def _parse_bout(comp: dict[str, Any], card_order: int) -> UpcomingBout:
     periods = ((comp.get("format") or {}).get("regulation") or {}).get("periods")
     notes = " ".join(str(n.get("headline", "")) for n in comp.get("notes") or [])
     return UpcomingBout(
-        espn_bout_id=str(comp["id"]),
+        source_bout_id=str(comp["id"]),
         weight_class=(comp.get("type") or {}).get("abbreviation"),
         card_order=card_order,
         fighter_a=fighters[0],
@@ -110,4 +110,6 @@ def _parse_fighter(c: dict[str, Any]) -> UpcomingFighter:
     record = next(
         (r.get("summary") for r in c.get("records") or [] if r.get("type") == "total"), None
     )
-    return UpcomingFighter(espn_id=str(c["id"]), name=athlete["displayName"], record=record)
+    return UpcomingFighter(
+        source_fighter_id=str(c["id"]), name=athlete["displayName"], record=record
+    )

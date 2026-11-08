@@ -1,0 +1,13 @@
+id: short-notice
+title: "Short-notice replacement: joined the card under 14 days out"
+description: >
+  Notice is only known for fighters added to a card after daily card tracking began
+  (late October 2026), so n stays tiny until months of refresh history build up.
+population:
+  date_from: 2026-10-01
+condition:
+  - feature: self_days_notice
+    op: "<"
+    value: 14
+outcome: won
+compare_to: baseline_50

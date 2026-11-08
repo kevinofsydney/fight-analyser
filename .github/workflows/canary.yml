@@ -16,13 +16,23 @@ jobs:
   canary:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen
       - name: Rebuild fixtures from live sources
         run: make fixtures
       - name: Run tests against fresh fixtures
         run: make test
+      - name: Wikipedia card source still parses
+        run: |
+          uv run python - <<'EOF'
+          from datetime import UTC, datetime
+          from fightdb.sources import http, wikipedia
+          with http.make_client() as c:
+              events = wikipedia.fetch_upcoming(c, datetime.now(UTC).date())
+          print(f"{len(events)} scheduled events, {sum(len(e.bouts) for e in events)} bouts")
+          assert events and any(e.bouts for e in events), "no scheduled bouts parsed from Wikipedia"
+          EOF
       - name: Check upstream freshness
         run: |
           uv run python - <<'EOF'

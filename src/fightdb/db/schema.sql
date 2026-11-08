@@ -94,6 +94,18 @@ CREATE TABLE IF NOT EXISTS round_stats (
     PRIMARY KEY (bout_id, fighter_id, round)
 );
 
+-- Official judges' scorecards, per round (fight-canon-db: mmadecisions.com and ufc.com).
+CREATE TABLE IF NOT EXISTS judge_scores (
+    bout_id     VARCHAR NOT NULL,
+    fighter_id  VARCHAR NOT NULL,
+    round       INTEGER NOT NULL,
+    judge       VARCHAR NOT NULL,
+    score       INTEGER,                  -- after point deductions, as on the card
+    deduction   INTEGER NOT NULL DEFAULT 0,
+    source      VARCHAR,
+    PRIMARY KEY (bout_id, fighter_id, round, judge)
+);
+
 CREATE TABLE IF NOT EXISTS odds (
     bout_id            VARCHAR NOT NULL,
     fighter_id         VARCHAR NOT NULL,

@@ -90,3 +90,73 @@ def test_yaml_round_trip():
     import yaml
 
     assert schema.Hypothesis.model_validate(yaml.safe_load(schema.to_yaml(h))) == h
+
+
+def test_division_rate_baseline(synthetic_db):
+    r = hypothesis.evaluate(synthetic_db, _h(compare_to="division_rate", outcome="went_distance"))
+    assert 0 < r.baseline < 1
+    assert r.baseline_label == "all bouts in this population"
+    assert 0 <= r.p_value <= 1
+
+
+@pytest.mark.parametrize(
+    "outcome", ["won_ko", "won_sub", "won_dec", "went_distance", "finished_r1"]
+)
+def test_every_outcome_evaluates(synthetic_db, outcome):
+    r = hypothesis.evaluate(synthetic_db, _h(outcome=outcome))
+    assert r.n > 0 and 0 <= r.k <= r.n
+    assert r.ci_low <= r.rate <= r.ci_high
+
+
+def test_between_is_inclusive_range(synthetic_db):
+    between = hypothesis.evaluate(
+        synthetic_db,
+        _h(condition=[{"feature": "diff_age_years", "op": "between", "value": [2, 5]}]),
+    )
+    manual = hypothesis.evaluate(
+        synthetic_db,
+        _h(
+            condition=[
+                {"feature": "diff_age_years", "op": ">=", "value": 2},
+                {"feature": "diff_age_years", "op": "<=", "value": 5},
+            ]
+        ),
+    )
+    assert between.n == manual.n > 0 and between.k == manual.k
+
+
+def test_matches_upcoming(con):
+    from datetime import date
+
+    from fightdb.pipeline import upsert
+    from fightdb.pipeline.build import build_all
+    from fightdb.sources.models import Event
+    from tests.conftest import make_bout, synthetic_history
+
+    hist = synthetic_history()
+    dobs = {f.fighter_id: f.dob for f in hist.fighters}
+    older, younger = sorted(["f1", "f2"], key=lambda f: dobs[f])
+    assert dobs[older] != dobs[younger]
+    upcoming_event = Event(
+        event_id="up1", name="Upcoming", date=date(2030, 1, 1), status="upcoming", source="test"
+    )
+    scheduled = make_bout("up-b1", "up1", older, younger).model_copy(
+        update=dict(
+            status="scheduled",
+            result_a=None,
+            winner_id=None,
+            method=None,
+            method_group=None,
+            end_round=None,
+            end_time_s=None,
+            fight_seconds=None,
+        )
+    )
+    hist = hist.model_copy(
+        update=dict(events=[*hist.events, upcoming_event], bouts=[*hist.bouts, scheduled])
+    )
+    upsert.upsert_history(con, hist)
+    build_all(con, train_models=False)
+    m = hypothesis.matches_upcoming(con, _h())
+    assert list(m["bout_id"]) == ["up-b1"]
+    assert list(m["fighter_id"]) == [older]

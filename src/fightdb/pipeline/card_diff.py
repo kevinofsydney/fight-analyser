@@ -21,6 +21,12 @@ class CardBout:
     def fighter_ids(self) -> frozenset[str]:
         return frozenset((self.a_id, self.b_id))
 
+    @property
+    def names(self) -> frozenset[str]:
+        from fightdb.sources.identity import name_key
+
+        return frozenset(name_key(n) for n in (self.a_name, self.b_name))
+
     def name_of(self, fighter_id: str) -> str:
         return self.a_name if fighter_id == self.a_id else self.b_name
 
@@ -102,13 +108,15 @@ def diff_cards(
     old_b = {b.bout_id: b for b in stored_bouts if b.event_id not in gone}
     new_b = {b.bout_id: b for b in new_bouts}
     old_by_pair = {b.fighter_ids: b for b in old_b.values()}
+    old_by_names = {b.names: b for b in old_b.values()}
 
     added = [b for bid, b in new_b.items() if bid not in old_b]
     removed = {bid: b for bid, b in old_b.items() if bid not in new_b}
 
-    # Same fighter pair under a new bout ID: a move between events, not add + cancel.
+    # Same fighter pair under a new bout ID: a move between events, not add + cancel. Matching
+    # by names as well covers a bout first stored from the fallback source under other IDs.
     for b in list(added):
-        prev = old_by_pair.get(b.fighter_ids)
+        prev = old_by_pair.get(b.fighter_ids) or old_by_names.get(b.names)
         if prev and prev.bout_id in removed:
             added.remove(b)
             del removed[prev.bout_id]
@@ -169,7 +177,9 @@ def diff_cards(
         prev = old_b.get(bid)
         if not prev:
             continue
-        if prev.fighter_ids != b.fighter_ids:
+        # Same names under new IDs means a fighter was just identified (e.g. a new override),
+        # not a change to the card.
+        if prev.fighter_ids != b.fighter_ids and prev.names != b.names:
             placeholder = any(f.startswith("tba:") for f in prev.fighter_ids)
             res.changes.append(
                 CardChange(

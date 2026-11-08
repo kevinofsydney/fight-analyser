@@ -25,10 +25,12 @@ Other commands:
 | `make refresh` | The daily job: new results, upcoming cards, card changes, retrain models |
 | `make hypotheses` | Run every saved hypothesis in `hypotheses/` |
 | `uv run fightdb hypothesis run hypotheses/examples/lw-older-by-8.yaml --sweep` | Run one hypothesis with a sweep |
-| `uv run fightdb model eval` | Walk-forward calibration of the win model, year by year |
+| `uv run fightdb model eval` | Walk-forward calibration of the win and method models, year by year |
 | `uv run fightdb db status` | Row counts and recent refresh runs |
 | `make check` | Lint, typecheck, tests |
 | `make errors` | Every logged error, grouped by cause (see [AGENTS.md](AGENTS.md#fixing-errors)) |
+
+On Windows without `make`, run the same steps through `uv run` (for `make check`: `uv run ruff check src tests scripts`, `uv run ruff format --check src tests scripts`, `uv run mypy src`, `uv run pytest`).
 
 On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src` (macOS can hide uv's editable-install file, so Python skips it).
 
@@ -37,18 +39,30 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | Page | |
 |------|--|
 | **Home** | Upcoming events and bouts with model odds, age and reach gaps; card changes in the last 7 days |
-| **Bout** | Tale of the tape, model outlook (win / KO / sub / decision vs division average), per-round projections with "show the maths", matching saved hypotheses, common opponents |
+| **Bout** | Tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels only once the method model passes its calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
 | **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save |
 | **Saved Hypotheses** | Every YAML in `hypotheses/`, its latest result and which upcoming bouts it applies to |
 | **Fighter** | Profile, UFC history, stat trends as of each fight |
-| **SQL** | Read-only console (no file or network access) over the DuckDB database |
-| **Status** | Refresh runs, unmatched fighters, model calibration vs the closing betting line |
+| **SQL** | Read-only console (no file or network access) over the DuckDB database, including `judge_rounds` (every judge's round score next to that round's stats) |
+| **Status** | Refresh runs (including data-quality failures and Wikipedia fallback days), unmatched fighters, model calibration vs the closing betting line |
 
-Saved hypotheses are plain YAML. Five examples are in [`hypotheses/examples/`](hypotheses/examples/).
+Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypotheses/examples/).
+
+### Your first hypothesis in 60 seconds
+
+1. Open **Hypothesis Lab**.
+2. Population: pick **lightweight**, sex **M**, leave the date from 2010.
+3. Condition: **Of** = "difference (this fighter − opponent)", **Stat** = Age, `>=` **8**. That reads "this fighter is at least 8 years older than the opponent".
+4. Outcome **won**, compare to **50% (coin flip)**, then run it.
+5. Read the verdict: the win rate, its 95% confidence interval, the gap from 50% in both percentage points and relative %, and the p-value. Below 30 matching bouts it warns you it's an anecdote.
+6. Look at the **sweep** chart (on by default; it varies the first condition's threshold). If the line wobbles around 50% with wide bands, "8 years" was a cherry-picked cutoff.
+7. Like it? Copy the YAML into `hypotheses/` and commit it. It then shows up on every upcoming bout it applies to.
+
+Every number is point-in-time: a 2015 bout only sees fights before it. Each hypothesis you run in a session counts toward a multiple-comparisons reminder.
 
 ## Hosting
 
-Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`) go in `.env` or the host's secret store.
+Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). GitHub starts scheduled workflows late: the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC, so on the free path cards can be up to about 8 hours older than the cron suggests. The homelab cron runs on time. Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`) go in `.env` or the host's secret store.
 
 ## Docs
 - [PRD](docs/PRD.md): what we're building and why
@@ -63,5 +77,7 @@ Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Act
 - [fight-canon-db](https://github.com/Jadevit/fight-canon-db) (MIT): fight history, round stats, odds
 - [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) (GPL-3.0 code; we use its data files): fallback history
 - ESPN's public scoreboard feed: upcoming cards
+- [Wikipedia](https://en.wikipedia.org/wiki/List_of_UFC_events) (CC BY-SA), via the MediaWiki API: upcoming cards when ESPN is down
+- Judges' scorecards via fight-canon-db (from mmadecisions.com and ufc.com)
 
 Both datasets originate from [UFC Stats](http://ufcstats.com). Used for personal, non-commercial analysis. Model probabilities are not betting advice.

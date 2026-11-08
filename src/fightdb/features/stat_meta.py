@@ -54,6 +54,15 @@ STATS: tuple[Stat, ...] = (
         "Current streak: +3 = three wins, -2 = two losses",
     ),
     Stat(
+        "distance_rate",
+        "Went the distance",
+        "Record",
+        "%",
+        None,
+        "{:.0%}",
+        "Share of UFC fights (wins and losses) that went to the judges",
+    ),
+    Stat(
         "finish_rate",
         "Finish rate",
         "Record",
@@ -81,6 +90,15 @@ STATS: tuple[Stat, ...] = (
         "Times submitted in the UFC",
     ),
     # Activity
+    Stat(
+        "days_notice",
+        "Days of notice",
+        "Activity",
+        "days",
+        None,
+        "{:.0f}",
+        "Days between joining this card and the event; blank if on the card before tracking began",
+    ),
     Stat(
         "days_since_last",
         "Days since last fight",
@@ -354,6 +372,15 @@ STATS: tuple[Stat, ...] = (
         True,
         "{:.0f}",
         "Adj. submission attempts vs division average",
+    ),
+    Stat(
+        "idx_sub_def",
+        "Submission defence index",
+        "Indices",
+        "index",
+        True,
+        "{:.0f}",
+        "Division sub finishes per attempt / adj. sub losses per attempt faced (100 = average)",
     ),
     Stat(
         "idx_durability",

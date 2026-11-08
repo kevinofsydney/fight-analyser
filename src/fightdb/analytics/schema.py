@@ -23,6 +23,8 @@ _EXTRA_FEATURES = {
     "self_southpaw",
     "opp_southpaw",
     "self_moving_division",
+    "self_short_notice",
+    "opp_short_notice",
     "opp_moving_division",
     "is_title",
     "scheduled_rounds",
@@ -120,7 +122,7 @@ class Hypothesis(BaseModel):
 
 
 def load_hypothesis(path: Path) -> Hypothesis:
-    return Hypothesis.model_validate(yaml.safe_load(path.read_text()))
+    return Hypothesis.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 def load_all(directory: Path) -> list[tuple[Path, Hypothesis]]:

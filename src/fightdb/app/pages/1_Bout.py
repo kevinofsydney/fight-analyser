@@ -97,6 +97,8 @@ base = data.query(
 ).iloc[0]
 
 st.subheader("Model outlook")
+# Low / medium / high labels only once the method model passes its calibration check (FR-31).
+show_levels = data.method_labels_calibrated()
 cols = st.columns(2)
 for col, s in zip(cols, (a, b), strict=True):
     with col:
@@ -123,7 +125,12 @@ for col, s in zip(cols, (a, b), strict=True):
                     "Level": components.level_vs_baseline(p, num(base[bkey])),
                 }
             )
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        table = pd.DataFrame(rows)
+        if not show_levels:
+            table = table.drop(columns=["Level"])
+        st.dataframe(table, hide_index=True, width="stretch")
+if not show_levels:
+    st.caption("Levels hidden: the method model hasn't passed its calibration check.")
 pd_ = num(a.self_p_distance)
 if not math.isnan(pd_):
     st.caption(

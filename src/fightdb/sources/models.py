@@ -112,6 +112,16 @@ class OddsLine(_Record):
     implied_prob_close: float | None = None
 
 
+class JudgeScore(_Record):
+    bout_id: str
+    fighter_id: str
+    round: int
+    judge: str
+    score: int | None = None
+    deduction: int = 0
+    source: str | None = None
+
+
 class HistoryBundle(BaseModel):
     """Everything a history adapter yields in one import."""
 
@@ -123,16 +133,18 @@ class HistoryBundle(BaseModel):
     bouts: list[Bout] = []
     rounds: list[RoundStats] = []
     odds: list[OddsLine] = []
+    judge_scores: list[JudgeScore] = []
 
 
 class UpcomingFighter(_Record):
-    espn_id: str
+    # The source's own athlete ID; None when the source has none (Wikipedia).
+    source_fighter_id: str | None
     name: str
     record: str | None = None
 
 
 class UpcomingBout(_Record):
-    espn_bout_id: str
+    source_bout_id: str
     weight_class: str | None
     card_order: int | None
     fighter_a: UpcomingFighter
@@ -143,7 +155,10 @@ class UpcomingBout(_Record):
 
 
 class UpcomingEvent(_Record):
-    espn_event_id: str
+    """An upcoming card from one source. ESPN is primary; Wikipedia is the fallback."""
+
+    source: Literal["espn", "wikipedia"] = "espn"
+    source_event_id: str
     name: str
     date: date
     location: str | None = None

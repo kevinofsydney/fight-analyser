@@ -17,6 +17,7 @@ from fightdb.sources.models import (
     Fighter,
     FighterAlias,
     HistoryBundle,
+    JudgeScore,
     OddsLine,
     RoundStats,
 )
@@ -226,6 +227,7 @@ def _load(con: sqlite3.Connection, source_version: str | None, since: str | None
     ]
 
     odds = _odds(con, fight_ids, fighter_ids)
+    judges = _judge_scores(con, fight_ids, fighter_ids)
     return HistoryBundle(
         source=SOURCE,
         source_version=source_version,
@@ -235,7 +237,34 @@ def _load(con: sqlite3.Connection, source_version: str | None, since: str | None
         bouts=bouts,
         rounds=rounds,
         odds=odds,
+        judge_scores=judges,
     )
+
+
+def _judge_scores(
+    con: sqlite3.Connection, fight_ids: dict[int, str], fighter_ids: dict[int, str]
+) -> list[JudgeScore]:
+    has_table = con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'judge_scores'"
+    ).fetchone()
+    if not has_table:  # older releases
+        return []
+    return [
+        JudgeScore(
+            bout_id=fight_ids[fight],
+            fighter_id=fighter_ids[fighter],
+            round=rnd,
+            judge=judge.strip(),
+            score=score,
+            deduction=deduction or 0,
+            source=src,
+        )
+        for fight, fighter, rnd, judge, score, deduction, src in con.execute(
+            """SELECT fight_id, fighter_id, round, judge, score, deduction, source
+               FROM judge_scores WHERE fight_id IN (SELECT fight_id FROM temp.ufc_fights)"""
+        )
+        if judge and judge.strip()
+    ]
 
 
 def _odds(
