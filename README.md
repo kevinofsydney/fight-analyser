@@ -73,6 +73,9 @@ Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Act
 - [Decisions](docs/DECISIONS.md): open choices for the owner
 - [AGENTS.md](AGENTS.md): rules for anyone (human or AI) contributing
 
+## License
+Code: [MIT](LICENSE). The license covers this repository's code, not the upstream data (see below).
+
 ## Data credits
 - [fight-canon-db](https://github.com/Jadevit/fight-canon-db) (MIT): fight history, round stats, odds
 - [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) (GPL-3.0 code; we use its data files): fallback history

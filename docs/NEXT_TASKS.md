@@ -12,13 +12,11 @@ uv run ruff check src tests scripts && uv run ruff format --check src tests scri
 
 ## Owner decisions / human-only
 
-1. **Fill in the Decision column in [DECISIONS.md](DECISIONS.md).** Every row is still ⬜, although the build uses the recommended defaults.
-2. **License (D19).** There's no `LICENSE` file, so the public repo is "all rights reserved" by default.
-3. **Branch protection (D21):** require CI to pass on `main` (GitHub settings).
-4. **Starter saved hypotheses (D27):** `hypotheses/` only has `examples/`.
-5. **Deployment checks (T8.x):** confirm the public instance serves the `data-latest` DB and `APP_PASSWORD` is set where the app is public.
-6. **Review and merge `task/next-tasks`**, then close GitHub issue #1 (source canary), which it fixes.
-7. **B1 contract change was made under the "fix all outstanding issues" instruction** (`sources/models.py`: `UpcomingEvent.source`, `source_event_id`, `source_bout_id`, `source_fighter_id`). ESPN IDs and stored data are unchanged. Review it in the PR.
+Done 2026-11-09: MIT license added, every row in [DECISIONS.md](DECISIONS.md) marked decided (recommended options), branch protection on `main`, `task/next-tasks` merged (closes issue #1). The B1 contract change (`sources/models.py`: source-neutral upcoming IDs) went in under the owner's "fix all outstanding issues" instruction.
+
+Still for the owner:
+1. **Starter saved hypotheses (D27):** `hypotheses/` only has `examples/`. Move or add the ones you want checked against every upcoming bout.
+2. **Deployment checks (T8.x):** confirm the public instance serves the `data-latest` DB and that `APP_PASSWORD` is set where the app is public.
 
 ## Known model limitation (not a bug)
 
