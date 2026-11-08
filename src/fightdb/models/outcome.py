@@ -39,10 +39,9 @@ DIFF_FEATURES = [
 # The method model uses the indices *before* the strength-of-schedule adjustment: with the
 # adjusted ones it was more under-confident for big favourites winning decisions. The win model
 # gains from the adjustment (walk-forward Brier 0.2334 -> 0.2322) and stays calibrated.
-# Known gap (2026-11-09): pooled over 2024-2026 the method model's 0.5-0.6 reliability bin
-# predicts ~54% and observes ~67% (n=130), favourites winning on points, so the calibration
-# gate keeps the Bout page's low/medium/high labels hidden. Temperature, Platt and isotonic
-# recalibration, recency weighting, regularisation and interaction terms did not close it.
+# Watch: favourites winning on points are the least certain corner. In 2024-2026 the 0.5-0.6
+# "wins by decision" bin predicted ~53% and observed ~64%, but on only 47 fighters, below the
+# gate's 100-per-bin minimum. If it fills up and stays off, the gate hides that one label.
 METHOD_DIFF_FEATURES = [
     f"{c}_raw" if c.removeprefix("diff_") in SCHEDULE_ADJUSTED else c for c in DIFF_FEATURES
 ]
@@ -211,6 +210,7 @@ def walk_forward(sides: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         method_eval = _evaluate_method(test, p, y)
         if method_eval is not None:
             evals.append(method_eval)
+            evals += _method_class_reliability(test, p, y)
     pred_df = pd.concat(preds, ignore_index=True) if preds else pd.DataFrame()
     return pred_df, pd.DataFrame(evals)
 
@@ -285,12 +285,44 @@ def _evaluate_method(test: pd.DataFrame, p: pd.DataFrame, year: int) -> dict[str
     }
 
 
-def _method_reliability(test: pd.DataFrame, p: pd.DataFrame) -> list[dict[str, float]]:
+METHODS = ("ko", "sub", "dec")
+
+
+def method_model_name(method: str) -> str:
+    """`model_evals` row holding the reliability of one method's "wins by X" probability."""
+    return f"{METHOD_MODEL}_{method}"
+
+
+def _win_by_method(test: pd.DataFrame, p: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Each fighter's "wins by KO / sub / decision" probabilities and outcomes, both sides of
+    every decisive bout, each number counted once. These are exactly what the Bout page shows.
+    (The six-class "loss_*" columns are the opponent's "win_*" numbers again, so pooling all six
+    would count every probability twice and double the apparent sample size.)"""
     labels, probs = method_probabilities(test, p, a_side_only=False)
-    onehot = (labels[:, None] == np.array(METHOD_CLASSES)[None, :]).astype(float)
-    probs = np.clip(probs, 1e-6, 1.0)
-    probs = probs / probs.sum(axis=1, keepdims=True)
-    return _reliability(onehot.ravel(), probs.ravel())
+    wins = np.clip(probs[:, :3], 0.0, 1.0)
+    hits = (labels[:, None] == np.array([f"win_{m}" for m in METHODS])[None, :]).astype(float)
+    return hits, wins
+
+
+def _method_reliability(test: pd.DataFrame, p: pd.DataFrame) -> list[dict[str, float]]:
+    hits, wins = _win_by_method(test, p)
+    return _reliability(hits.ravel(), wins.ravel())
+
+
+def _method_class_reliability(
+    test: pd.DataFrame, p: pd.DataFrame, year: int
+) -> list[dict[str, object]]:
+    hits, wins = _win_by_method(test, p)
+    return [
+        {
+            "model_name": method_model_name(m),
+            "test_year": int(year),
+            "n": int(len(hits)),
+            "reliability": json.dumps(_reliability(hits[:, k], wins[:, k])),
+        }
+        for k, m in enumerate(METHODS)
+        if len(hits)
+    ]
 
 
 def is_calibrated(

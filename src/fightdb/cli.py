@@ -155,14 +155,28 @@ def hypothesis_run(
 @hyp_app.command("run-all")
 def hypothesis_run_all() -> None:
     """Evaluate every hypothesis in the hypotheses/ folder."""
+    import duckdb
+
     from fightdb.analytics import hypothesis, schema
     from fightdb.db.conn import open_db
 
     s = get_settings()
+    failed = []
     with open_db(s.db_path, read_only=True) as con:
         for path, h in schema.load_all(s.hypotheses_dir):
-            r = hypothesis.evaluate(con, h, keep_bouts=False)
+            # One hypothesis the database can't answer (e.g. a column only a newer build has)
+            # must not hide the others.
+            try:
+                r = hypothesis.evaluate(con, h, keep_bouts=False)
+            except duckdb.Error as exc:
+                logging.getLogger(__name__).warning("hypothesis %s failed: %s", path.name, exc)
+                typer.echo(f"[{path.name}] {h.title}\n  ERROR: {exc}")
+                failed.append(path.name)
+                continue
             typer.echo(f"[{path.name}] {h.title}\n  {r.verdict}")
+    if failed:
+        typer.echo(f"{len(failed)} hypotheses failed: {', '.join(failed)}", err=True)
+        raise typer.Exit(1)
 
 
 @model_app.command("eval")

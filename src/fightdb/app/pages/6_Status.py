@@ -131,15 +131,14 @@ mev = all_evals[all_evals["model_name"] == outcome.METHOD_MODEL]
 if mev.empty:
     st.caption("No method-model evaluations yet.")
 else:
-    ok = outcome.is_calibrated(all_evals, outcome.METHOD_MODEL)
+    ok = data.method_labels_calibrated()
+    shown = [m for m, v in ok.items() if v]
     st.caption(
         "Six outcomes (each fighter by KO, submission or decision). Multi-class Brier score: lower is "
-        "better; 'baseline' always predicts the historical mix. "
-        + (
-            "Calibrated on recent years, so the Bout page shows low / medium / high labels."
-            if ok
-            else "Not calibrated on recent years, so the Bout page hides low / medium / high labels."
-        )
+        "better; 'baseline' always predicts the historical mix. Calibration is checked per method "
+        "on the last three test years; the Bout page shows low / medium / high labels for: "
+        + (", ".join(shown) if shown else "none")
+        + "."
     )
     st.dataframe(
         mev[["test_year", "n", "brier", "brier_baseline", "log_loss", "accuracy"]],

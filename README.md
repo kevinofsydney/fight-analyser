@@ -39,7 +39,7 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | Page | |
 |------|--|
 | **Home** | Upcoming events and bouts with model odds, age and reach gaps; card changes in the last 7 days |
-| **Bout** | Tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels only once the method model passes its calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
+| **Bout** | Tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels for each method whose probabilities pass the calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
 | **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save |
 | **Saved Hypotheses** | Every YAML in `hypotheses/`, its latest result and which upcoming bouts it applies to |
 | **Fighter** | Profile, UFC history, stat trends as of each fight |

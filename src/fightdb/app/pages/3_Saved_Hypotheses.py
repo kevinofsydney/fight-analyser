@@ -5,6 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+import logging
+
+import duckdb
 import pandas as pd
 import streamlit as st
 from pydantic import ValidationError
@@ -34,8 +37,13 @@ try:
         except (ValidationError, ValueError) as exc:
             st.error(f"{p.name}: {exc}")
             continue
-        r = hypothesis.evaluate(con, h, keep_bouts=False)
-        up = hypothesis.matches_upcoming(con, h)
+        try:
+            r = hypothesis.evaluate(con, h, keep_bouts=False)
+            up = hypothesis.matches_upcoming(con, h)
+        except duckdb.Error as exc:  # one bad hypothesis must not break the page
+            logging.getLogger(__name__).warning("hypothesis %s failed: %s", p.name, exc)
+            st.warning(f"{p.name}: can't be evaluated against this database ({exc}).")
+            continue
         rows.append(
             {
                 "Hypothesis": h.title,

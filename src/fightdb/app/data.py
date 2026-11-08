@@ -129,11 +129,16 @@ def model_evals() -> pd.DataFrame:
     return query("SELECT * FROM model_evals ORDER BY model_name, test_year")
 
 
-def method_labels_calibrated() -> bool:
+def method_labels_calibrated() -> dict[str, bool]:
+    """Per method ("ko", "sub", "dec"): may the Bout page show its low / medium / high label?"""
     from fightdb.models import outcome
 
     try:
         ev = model_evals()
     except duckdb.Error:
-        return False
-    return outcome.is_calibrated(ev, outcome.METHOD_MODEL)
+        return dict.fromkeys(outcome.METHODS, False)
+    return {
+        m: outcome.is_calibrated(ev, outcome.METHOD_MODEL)
+        and outcome.is_calibrated(ev, outcome.method_model_name(m))
+        for m in outcome.METHODS
+    }
