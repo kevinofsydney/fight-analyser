@@ -154,8 +154,14 @@ def build_bout_sides(
         sides[f"{p}_short_notice"] = np.where(
             known, (sides[f"{p}_days_notice"] < SHORT_NOTICE_DAYS).astype(float), np.nan
         )
-    sides["self_southpaw"] = (sides["self_stance"] == "Southpaw").astype(int)
-    sides["opp_southpaw"] = (sides["opp_stance"] == "Southpaw").astype(int)
+    for p in ("self", "opp"):
+        for stance in ("Southpaw", "Orthodox"):
+            value = sides[f"{p}_stance"]
+            sides[f"{p}_{stance.lower()}"] = np.where(
+                value.isin(["Southpaw", "Orthodox", "Switch", "Open Stance", "Sideways"]),
+                (value == stance).astype(float),
+                np.nan,
+            )
     return sides
 
 

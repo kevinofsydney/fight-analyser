@@ -191,7 +191,23 @@ def test_future_fights_never_change_past_snapshots(con):
         .sort_index()
     )
     early_after = after.set_index(["bout_id", "fighter_id"]).loc[early.index].sort_index()
-    cols = [c for c in early.columns if c.startswith(("sos_", "idx_", "slpm", "td_acc"))]
+    cols = [
+        c
+        for c in early.columns
+        if c.startswith(
+            (
+                "sos_",
+                "idx_",
+                "slpm",
+                "td_acc",
+                "career_",
+                "wear_",
+                "recent3_",
+                "last_",
+                "division_change",
+            )
+        )
+    ]
     assert {"sos_str_leak", "idx_str_off", "idx_str_off_raw"} <= set(cols)
     pd.testing.assert_frame_equal(early[cols], early_after[cols])
     # ...and the rewrite does reach later snapshots, so the test can fail.
@@ -225,3 +241,55 @@ def test_schedule_adjustment_direction():
         120
     )  # dangerous opponents: defence counts more
     assert out.loc[1, "idx_wrest_off"] == 100 and out.loc[0, "idx_str_off_raw"] == 100
+
+
+def test_fight_wear_completeness_and_previous_result():
+    rows = []
+    for i, (sig, count, method, result, seconds) in enumerate(
+        [
+            (80, 1, "ko_tko", "L", 200),
+            (120, 5, "dec", "W", 1500),
+            (60, 1, "dec", "L", 900),  # only one of three rounds recorded
+        ]
+    ):
+        rows.append(
+            {
+                "fighter_id": "a",
+                "bout_id": f"b{i}",
+                "date": pd.Timestamp(2020, i + 1, 1),
+                "status": "completed",
+                "result": result,
+                "method_group": method,
+                "end_round": 3 if i == 2 else count,
+                "fight_seconds": seconds,
+                "opp_rounds_recorded": count,
+                "opp_sig_rounds": count,
+                "opp_kd_rounds": count,
+                "opp_sig_l": sig,
+                "opp_kd": 1,
+            }
+        )
+    wear = snapshots._wear_by_day(pd.DataFrame(rows)).set_index("date")
+    assert wear.loc[pd.Timestamp("2020-01-01"), "last_ko_loss"] == 1
+    assert wear.loc[pd.Timestamp("2020-02-01"), "last_five_round_war"] == 1
+    assert wear.loc[pd.Timestamp("2020-02-01"), "career_sig_absorbed"] == 200
+    assert wear.loc[pd.Timestamp("2020-02-01"), "wear_fights_75"] == 2
+    assert pd.isna(wear.loc[pd.Timestamp("2020-03-01"), "career_sig_absorbed"])
+    assert wear.loc[pd.Timestamp("2020-03-01"), "wear_missing_fights"] == 1
+
+
+def test_wear_before_fight_and_direction(con):
+    hist = _history()
+    bouts = [
+        b.model_copy(update={"division": "welterweight"}) if b.bout_id == "b3" else b
+        for b in hist.bouts
+    ]
+    upsert.upsert_history(con, hist.model_copy(update={"bouts": bouts}))
+    snap, _ = snapshots.build_snapshots(con)
+    snap = snap.set_index(["bout_id", "fighter_id"])
+    assert snap.loc[("b3", "a"), "career_sig_absorbed"] == 5
+    assert snap.loc[("b3", "a"), "division_change"] == 1
+    assert snap.loc[("b4", "a"), "division_change"] == -1
+    assert pd.isna(snap.loc[("b4", "a"), "career_sig_absorbed"])
+    assert pd.isna(snap.loc[("b1", "a"), "division_change"])
+    assert snap.loc[("b3", "a"), "last_ko_loss"] == 0

@@ -1,0 +1,15 @@
+id: moving-up
+title: "Moving up a division"
+description: "Move relative to the last UFC division; catchweights, unknown divisions and debutants excluded."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_division_change
+    op: "=="
+    value: 1
+  - feature: opp_division_change
+    op: "!="
+    value: 1
+outcome: won
+compare_to: baseline_50

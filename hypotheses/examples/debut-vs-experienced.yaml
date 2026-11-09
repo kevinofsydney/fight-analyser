@@ -1,0 +1,15 @@
+id: debut-vs-experienced
+title: "UFC debut versus an experienced opponent"
+description: "How often does a debutant defeat an opponent with at least two prior UFC fights?"
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_ufc_fights
+    op: "=="
+    value: 0
+  - feature: opp_ufc_fights
+    op: ">="
+    value: 2
+outcome: won
+compare_to: baseline_50

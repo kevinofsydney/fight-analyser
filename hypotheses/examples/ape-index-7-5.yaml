@@ -1,0 +1,15 @@
+id: ape-index-7-5
+title: "Ape index of at least 7.5 cm versus lower index"
+description: "Reach minus height, comparing fighters on opposite sides of the threshold."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_ape_index_cm
+    op: ">="
+    value: 7.5
+  - feature: opp_ape_index_cm
+    op: "<"
+    value: 7.5
+outcome: won
+compare_to: baseline_50

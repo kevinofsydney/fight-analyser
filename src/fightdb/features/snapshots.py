@@ -53,6 +53,7 @@ _SIDES_SQL = """
 WITH totals AS (
     SELECT bout_id, fighter_id,
            sum(kd) AS kd, sum(sig_l) AS sig_l, sum(sig_a) AS sig_a, sum(td_l) AS td_l,
+           count(*) AS rounds_recorded, count(sig_l) AS sig_rounds, count(kd) AS kd_rounds,
            sum(td_a) AS td_a, sum(sub_att) AS sub_att, sum(ctrl_s) AS ctrl_s,
            sum(CASE WHEN round = 1 THEN sig_l END) AS r1_sig_l,
            sum(CASE WHEN round = 3 THEN sig_l END) AS r3_sig_l
@@ -76,6 +77,8 @@ SELECT s.*,
        t.kd, t.sig_l, t.sig_a, t.td_l, t.td_a, t.sub_att, t.ctrl_s, t.r1_sig_l, t.r3_sig_l,
        o.kd AS opp_kd, o.sig_l AS opp_sig_l, o.sig_a AS opp_sig_a, o.td_l AS opp_td_l,
        o.td_a AS opp_td_a, o.sub_att AS opp_sub_att, o.ctrl_s AS opp_ctrl_s,
+       o.rounds_recorded AS opp_rounds_recorded, o.sig_rounds AS opp_sig_rounds,
+       o.kd_rounds AS opp_kd_rounds,
        (t.bout_id IS NOT NULL AND o.bout_id IS NOT NULL) AS has_stats
 FROM sides s
 LEFT JOIN totals t ON t.bout_id = s.bout_id AND t.fighter_id = s.fighter_id
@@ -148,6 +151,101 @@ def _career_by_day(h: pd.DataFrame) -> pd.DataFrame:
     )
     out["last_date"] = out["date"]
     return out
+
+
+def _wear_by_day(sides: pd.DataFrame) -> pd.DataFrame:
+    """Recorded exposure and previous-fight flags, grouped by day to prevent look-ahead."""
+    h = sides[(sides["status"] == "completed") & sides["result"].notna()].copy()
+    h = h.sort_values(["fighter_id", "date", "bout_id"])
+    complete = (
+        h["end_round"].notna()
+        & (h["opp_rounds_recorded"] == h["end_round"])
+        & (h["opp_sig_rounds"] == h["end_round"])
+    )
+    kd_complete = complete & (h["opp_kd_rounds"] == h["end_round"])
+    h["recorded_sig"] = h["opp_sig_l"].where(complete)
+    h["recorded_kd"] = h["opp_kd"].where(kd_complete)
+    rows = []
+    for fighter, fights in h.groupby("fighter_id", sort=False):
+        total_sig = total_kd = known = missing = kd_missing = 0
+        heavy = {50: 0, 75: 0, 100: 0}
+        recent: list[float] = []
+        for day, group in fights.groupby("date", sort=True):
+            for fight in group.itertuples():
+                sig, kd = fight.recorded_sig, fight.recorded_kd
+                if pd.isna(sig):
+                    missing += 1
+                    recent.append(float("nan"))
+                else:
+                    known += 1
+                    total_sig += sig
+                    recent.append(sig)
+                    for threshold in heavy:
+                        heavy[threshold] += int(sig >= threshold)
+                if pd.isna(kd):
+                    kd_missing += 1
+                else:
+                    total_kd += kd
+            last = group.iloc[-1]
+            single = len(group) == 1
+            last_ko = (
+                float(last["result"] == "L" and last["method_group"] == "ko_tko")
+                if single and pd.notna(last["method_group"])
+                else float("nan")
+            )
+            if (
+                single
+                and pd.notna(last["method_group"])
+                and last["method_group"] != "dec"
+                or single
+                and pd.notna(last["fight_seconds"])
+                and last["fight_seconds"] != 1500
+            ):
+                last_war = 0.0
+            elif (
+                single
+                and last["method_group"] == "dec"
+                and pd.notna(last["fight_seconds"])
+                and pd.notna(last["recorded_sig"])
+            ):
+                last_war = float(last["fight_seconds"] == 1500 and last["recorded_sig"] >= 100)
+            else:
+                last_war = float("nan")
+            last_three = recent[-3:]
+            rows.append(
+                {
+                    "fighter_id": fighter,
+                    "date": day,
+                    "career_sig_absorbed": total_sig if missing == 0 else float("nan"),
+                    "career_kd_absorbed": total_kd if kd_missing == 0 else float("nan"),
+                    "wear_stats_fights": known,
+                    "wear_missing_fights": missing,
+                    **{
+                        f"wear_fights_{t}": n if missing == 0 else float("nan")
+                        for t, n in heavy.items()
+                    },
+                    "recent3_sig_absorbed": sum(last_three)
+                    if len(last_three) == 3 and all(pd.notna(x) for x in last_three)
+                    else float("nan"),
+                    "last_ko_loss": last_ko,
+                    "last_five_round_war": last_war,
+                }
+            )
+    columns = [
+        "fighter_id",
+        "date",
+        "career_sig_absorbed",
+        "career_kd_absorbed",
+        "wear_stats_fights",
+        "wear_missing_fights",
+        "wear_fights_50",
+        "wear_fights_75",
+        "wear_fights_100",
+        "recent3_sig_absorbed",
+        "last_ko_loss",
+        "last_five_round_war",
+    ]
+    return pd.DataFrame(rows, columns=columns).astype({"date": sides["date"].dtype})
 
 
 def _asof(left: pd.DataFrame, right: pd.DataFrame, by: str, left_on: str = "date") -> pd.DataFrame:
@@ -304,16 +402,35 @@ def _priors_by_year(
 
 def build_snapshots(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, dict[str, float]]:
     sides = load_sides(con)
+    wear = _wear_by_day(sides)
     h = _history_rows(sides)
     career = _career_by_day(h)
 
     q = sides[["bout_id", "fighter_id", "opp_id", "date", "division", "status"]].copy()
     s = _asof(q, career, by="fighter_id")
     s[COUNT_COLS] = s[COUNT_COLS].fillna(0)
+    s = _asof(s, wear, by="fighter_id")
+    for col in ("wear_stats_fights", "wear_missing_fights"):
+        s[col] = s[col].fillna(0)
 
     fighters = con.execute("SELECT fighter_id, dob, height_cm, reach_cm, stance FROM fighters").df()
     fighters["dob"] = pd.to_datetime(fighters["dob"])
     s = s.merge(fighters, on="fighter_id", how="left")
+    for stance in ("Southpaw", "Orthodox"):
+        s[stance.lower()] = np.where(
+            s["stance"].isin(["Southpaw", "Orthodox", "Switch", "Open Stance", "Sideways"]),
+            (s["stance"] == stance).astype(float),
+            np.nan,
+        )
+    debut = s["fights"] == 0
+    for col in (
+        "career_sig_absorbed",
+        "career_kd_absorbed",
+        "wear_fights_50",
+        "wear_fights_75",
+        "wear_fights_100",
+    ):
+        s.loc[debut, col] = 0.0
 
     base = _division_baselines(h, q)
     s = s.merge(base, on=["bout_id", "fighter_id"], how="left")
@@ -435,6 +552,23 @@ def _derive(s: pd.DataFrame, k: dict[str, pd.Series]) -> pd.DataFrame:
         s["streak"] = s["streak"].fillna(0)
         s["days_since_last"] = (s["date"] - s["last_date"]).dt.days
         s["cage_minutes"] = s["seconds"] / 60
+        weights = {
+            "flyweight": 125,
+            "bantamweight": 135,
+            "featherweight": 145,
+            "lightweight": 155,
+            "welterweight": 170,
+            "middleweight": 185,
+            "light_heavyweight": 205,
+            "heavyweight": 265,
+            "w_strawweight": 115,
+            "w_flyweight": 125,
+            "w_bantamweight": 135,
+            "w_featherweight": 145,
+        }
+        previous = s["last_division"].map(weights)
+        current = s["division"].map(weights)
+        s["division_change"] = np.sign(current - previous)
         s["moving_division"] = (
             s["last_division"].notna() & (s["last_division"] != s["division"])
         ).astype(int)

@@ -1,0 +1,18 @@
+id: debut-short-notice
+title: "Short-notice debut versus an experienced opponent"
+description: "Notice coverage starts when the app began tracking cards; unknown notice is excluded."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_ufc_fights
+    op: "=="
+    value: 0
+  - feature: opp_ufc_fights
+    op: ">="
+    value: 2
+  - feature: self_days_notice
+    op: "<"
+    value: 14
+outcome: won
+compare_to: baseline_50

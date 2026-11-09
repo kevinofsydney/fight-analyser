@@ -1,0 +1,12 @@
+id: five-round-war
+title: "After a five-round war"
+description: "Previous UFC fight was a 25-minute decision with at least 100 significant strikes absorbed."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_last_five_round_war
+    op: "=="
+    value: 1
+outcome: won
+compare_to: baseline_50

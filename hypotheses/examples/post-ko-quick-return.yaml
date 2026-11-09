@@ -1,0 +1,15 @@
+id: post-ko-quick-return
+title: "Return within 120 days after a KO/TKO loss"
+description: "Recorded prior UFC result only; unknown previous results are excluded."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_last_ko_loss
+    op: "=="
+    value: 1
+  - feature: self_days_since_last
+    op: "<="
+    value: 120
+outcome: won
+compare_to: baseline_50
