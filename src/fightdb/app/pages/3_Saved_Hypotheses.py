@@ -15,7 +15,7 @@ import streamlit as st
 from pydantic import ValidationError
 from sklearn.linear_model import LogisticRegression
 
-from fightdb.analytics import hypothesis, schema
+from fightdb.analytics import hypothesis, schema, stats
 from fightdb.app import components, data
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, OUTCOMES
@@ -92,68 +92,113 @@ def plot_feature_label(feature: str) -> str:
     return feature.replace("_", " ").capitalize()
 
 
+def group_observations(observations: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Choose one eligible fighter per bout and summarise observed outcomes in ranges."""
+    fights = (
+        observations.sort_values(
+            ["feature_value", "fighter_id"], ascending=[False, True], kind="stable"
+        )
+        .drop_duplicates("bout_id")
+        .copy()
+    )
+    values = fights["feature_value"]
+    if values.nunique() == 1:
+        fights["range_id"] = 0
+    else:
+        fights["range_id"] = pd.qcut(
+            values, q=min(8, values.nunique()), labels=False, duplicates="drop"
+        ).astype(int)
+    rows = []
+    for range_id, group in fights.groupby("range_id", sort=True):
+        n = len(group)
+        successes = int(group["outcome_value"].sum())
+        low, high = stats.wilson_ci(successes, n)
+        minimum, maximum = group["feature_value"].min(), group["feature_value"].max()
+        rows.append(
+            {
+                "range_id": int(range_id),
+                "range": f"{minimum:.1f}–{maximum:.1f}" if minimum != maximum else f"{minimum:.1f}",
+                "midpoint": group["feature_value"].mean(),
+                "rate": successes / n,
+                "count": n,
+                "successes": successes,
+                "ci_low": low,
+                "ci_high": high,
+            }
+        )
+    return fights, pd.DataFrame(rows)
+
+
 def outcome_plot(
-    observations: pd.DataFrame, feature_label: str, outcome_label: str
+    groups: pd.DataFrame,
+    feature_label: str,
+    outcome_label: str,
+    baseline: float,
+    fights: pd.DataFrame,
+    show_trend: bool,
 ) -> alt.LayerChart:
-    """Show binary observed outcomes and a descriptive, one-variable logistic fit."""
-    dots = observations.copy()
-    jitter = (
-        pd.util.hash_pandas_object(dots[["bout_id", "fighter_id"]], index=False) % 1000
-    ) / 1000
-    dots["display_outcome"] = np.where(
-        dots["outcome_value"] == 1, 0.94 + 0.06 * jitter, 0.06 * jitter
+    """Show grouped observed outcomes and Wilson intervals; select a range to inspect fights."""
+    selection = alt.selection_point(name="fight_range", fields=["range_id"], on="click")
+    x = alt.X("midpoint:Q", title=feature_label, scale=alt.Scale(zero=False))
+    tooltip = [
+        alt.Tooltip("range:N", title="Range"),
+        alt.Tooltip("rate:Q", title=outcome_label, format=".1%"),
+        alt.Tooltip("successes:Q", title="Successful outcomes"),
+        alt.Tooltip("count:Q", title="Fights"),
+        alt.Tooltip("ci_low:Q", title="95% interval lower", format=".1%"),
+        alt.Tooltip("ci_high:Q", title="95% interval upper", format=".1%"),
+    ]
+    base = alt.Chart(groups).encode(x=x)
+    intervals = base.mark_rule().encode(
+        y=alt.Y(
+            "ci_low:Q",
+            title=f"Observed rate: {outcome_label}",
+            scale=alt.Scale(domain=[0, 1]),
+            axis=alt.Axis(format="%"),
+        ),
+        y2="ci_high:Q",
+        tooltip=tooltip,
     )
-    dots["event_display"] = dots["event_date"].map(components.fmt_date)
-    dots["outcome_display"] = np.where(dots["outcome_value"] == 1, "Yes", "No")
-    plot = (
-        alt.Chart(dots)
-        .mark_circle(size=30, opacity=0.3)
+    points = (
+        base.mark_circle(size=100)
         .encode(
-            x=alt.X("feature_value:Q", title=feature_label),
-            y=alt.Y(
-                "display_outcome:Q",
-                title=f"Observed outcome / fitted probability: {outcome_label}",
-                scale=alt.Scale(domain=[0, 1]),
-                axis=alt.Axis(format="%"),
-            ),
-            tooltip=[
-                alt.Tooltip("event_display:N", title="Date"),
-                alt.Tooltip("event_name:N", title="Event"),
-                alt.Tooltip("fighter_name:N", title="Fighter"),
-                alt.Tooltip("opp_name:N", title="Opponent"),
-                alt.Tooltip("result:N", title="Fighter result"),
-                alt.Tooltip("method:N", title="Method"),
-                alt.Tooltip("feature_value:Q", title=feature_label, format=".2f"),
-                alt.Tooltip("outcome_display:N", title=outcome_label),
-            ],
+            y=alt.Y("rate:Q", scale=alt.Scale(domain=[0, 1])),
+            tooltip=tooltip,
+            opacity=alt.condition(selection, alt.value(1), alt.value(0.35)),
         )
+        .add_params(selection)
     )
-    x = dots["feature_value"].to_numpy(dtype=float)
-    y = dots["outcome_value"].to_numpy(dtype=int)
-    if len(np.unique(x)) < 2 or len(np.unique(y)) < 2:
-        return alt.layer(plot)
-    mean, scale = x.mean(), x.std()
-    model = LogisticRegression().fit(((x - mean) / scale).reshape(-1, 1), y)
-    grid = np.linspace(x.min(), x.max(), 100)
-    fit = pd.DataFrame(
-        {
-            "feature_value": grid,
-            "probability": model.predict_proba(((grid - mean) / scale).reshape(-1, 1))[:, 1],
-        }
+    reference = (
+        alt.Chart(pd.DataFrame({"baseline": [baseline]}))
+        .mark_rule(color="#888888", strokeDash=[5, 4])
+        .encode(y="baseline:Q")
     )
-    line = (
-        alt.Chart(fit)
-        .mark_line(color="#ff4b4b", strokeWidth=3)
-        .encode(
-            x=alt.X("feature_value:Q", title=feature_label),
-            y=alt.Y("probability:Q", scale=alt.Scale(domain=[0, 1])),
-            tooltip=[
-                alt.Tooltip("feature_value:Q", title=feature_label, format=".2f"),
-                alt.Tooltip("probability:Q", title="Fitted probability", format=".1%"),
-            ],
+    layers = [reference, intervals, points]
+    x_values = fights["feature_value"].to_numpy(dtype=float)
+    y_values = fights["outcome_value"].to_numpy(dtype=int)
+    if show_trend and len(np.unique(x_values)) > 1 and len(np.unique(y_values)) > 1:
+        mean, scale = x_values.mean(), x_values.std()
+        model = LogisticRegression().fit(((x_values - mean) / scale).reshape(-1, 1), y_values)
+        grid = np.linspace(x_values.min(), x_values.max(), 100)
+        fit = pd.DataFrame(
+            {
+                "midpoint": grid,
+                "probability": model.predict_proba(((grid - mean) / scale).reshape(-1, 1))[:, 1],
+            }
         )
-    )
-    return alt.layer(plot, line)
+        layers.append(
+            alt.Chart(fit)
+            .mark_line(color="#ff4b4b")
+            .encode(
+                x=x,
+                y=alt.Y("probability:Q", scale=alt.Scale(domain=[0, 1])),
+                tooltip=[
+                    alt.Tooltip("midpoint:Q", title=feature_label, format=".2f"),
+                    alt.Tooltip("probability:Q", title="Fitted probability", format=".1%"),
+                ],
+            )
+        )
+    return alt.layer(*layers)
 
 
 for index, (h, r, up) in enumerate(details):
@@ -207,22 +252,86 @@ for index, (h, r, up) in enumerate(details):
         if observations.empty:
             st.caption("No fights have the data needed for this plot.")
         else:
+            fights, groups = group_observations(observations)
             st.caption(
-                f"{len(observations):,} fighter-sides with known values. Each dot represents an actual outcome "
-                "(0% or 100%), spread slightly for visibility. The red line is a descriptive one-variable "
-                "logistic fit, not the app's fight prediction or evidence of causation. Both fighters may appear for the same fight."
+                f"{len(fights):,} fights with known values. Each dot shows the observed outcome "
+                "rate for a range, with a 95% Wilson interval; the dashed line is the hypothesis "
+                "baseline. Select a dot to see its fights. Ranges have roughly equal numbers of fights."
             )
-            if (
-                observations["feature_value"].nunique() < 2
-                or observations["outcome_value"].nunique() < 2
-            ):
+            st.caption(
+                "One eligible fighter is shown per fight: if both qualify, the fighter with the "
+                "higher horizontal-axis value is selected (ties are resolved consistently). "
+                "This is descriptive, not a model prediction or evidence of causation. Intervals "
+                "do not account for fighters appearing in multiple bouts."
+            )
+            show_trend = st.checkbox(
+                "Show fitted trend",
+                key=f"show_trend_{index}",
+                help="A descriptive one-variable logistic fit, not the app's prediction model.",
+            )
+            if show_trend:
                 st.caption(
-                    "No fitted line: at least two distinct values and both outcomes are needed."
+                    "The red curve is a descriptive logistic fit, not the app's prediction model."
                 )
-            st.altair_chart(
-                outcome_plot(observations, plot_feature_label(feature), OUTCOMES[h.outcome]),
+            selected = st.altair_chart(
+                outcome_plot(
+                    groups,
+                    plot_feature_label(feature),
+                    OUTCOMES[h.outcome],
+                    r.baseline,
+                    fights,
+                    show_trend,
+                ),
                 width="stretch",
+                on_select="rerun",
+                selection_mode="fight_range",
+                key=f"outcome_chart_{index}",
             )
+            chosen = selected.selection.get("fight_range", [])
+            if chosen:
+                range_id = chosen[0]["range_id"]
+                selected_fights = fights.loc[fights["range_id"] == range_id].sort_values(
+                    "event_date", ascending=False
+                )
+                st.markdown("**Fights in selected range**")
+                st.caption(f"{len(selected_fights):,} fights; select a row to open its bout.")
+                shown_range = components.format_dates(
+                    selected_fights[
+                        [
+                            "event_date",
+                            "event_name",
+                            "fighter_name",
+                            "opp_name",
+                            "result",
+                            "method",
+                            "feature_value",
+                        ]
+                    ],
+                    dates=("event_date",),
+                ).rename(
+                    columns={
+                        "event_date": "Date",
+                        "event_name": "Event",
+                        "fighter_name": "Fighter",
+                        "opp_name": "Opponent",
+                        "result": "Result",
+                        "method": "Method",
+                        "feature_value": plot_feature_label(feature),
+                    }
+                )
+                picked = st.dataframe(
+                    shown_range,
+                    hide_index=True,
+                    width="stretch",
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key=f"range_fights_{index}_{range_id}",
+                )
+                if picked.selection.rows:
+                    st.session_state["bout_id"] = selected_fights.iloc[picked.selection.rows[0]][
+                        "bout_id"
+                    ]
+                    st.switch_page("pages/1_Bout.py")
         st.markdown("**Previous matching fights**")
         st.caption(
             "Each row is the fighter who matched the condition; the result is from their perspective. "
@@ -274,3 +383,4 @@ for index, (h, r, up) in enumerate(details):
                 st.session_state["bout_id"] = previous.iloc[selection.selection.rows[0]]["bout_id"]
                 st.switch_page("pages/1_Bout.py")
         st.code(schema.to_yaml(h), language="yaml")
+
