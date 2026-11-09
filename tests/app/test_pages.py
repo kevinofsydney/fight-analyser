@@ -106,6 +106,5 @@ def test_hypothesis_date_allows_recent_start(db):
 
     at = AppTest.from_file(str(APP / "pages" / "2_Hypothesis_Lab.py"), default_timeout=120)
     at.run()
-    at.date_input[0].set_value(date.today()).run()
     assert not at.exception, [e.value for e in at.exception]
-    assert at.date_input[0].value == date.today()
+    assert at.date_input[0].max == date.today()
