@@ -86,6 +86,8 @@ def test_past_bout_shows_elo_and_round_stats(db):
     assert at.title[0].value == "Bout"
     assert any(b.label == "Reset" for b in at.button)
     assert any(e.label == "What goes into the model outlook?" for e in at.expander)
+    assert sum(c.value == "Current pro record" for c in at.caption) == 2
+    assert sum(c.value == "Age at bout" for c in at.caption) == 2
     assert any("Elo before fight" in m.label for m in at.metric)
     assert any(h.value == "Fight statistics by round" for h in at.subheader)
 
@@ -261,3 +263,18 @@ def test_home_card_selection_opens_selected_bout(db, tmp_path, monkeypatch):
         assert at.session_state["bout_selector"] == bouts[1][0]
     finally:
         get_settings.cache_clear()
+
+
+def test_fighter_summary_formats_missing_data_and_portrait_safely():
+    import pandas as pd
+
+    from fightdb.app.components import fighter_portrait, odds_range, pro_record
+
+    assert pro_record(10, 0, 2) == "10–0–2"
+    assert pro_record(10, None, 0) == "—"
+    assert odds_range(pd.Series([1.75, 2.15])) == "1.75–2.15"
+    assert odds_range(pd.Series([], dtype=float)) == "—"
+    portrait = fighter_portrait("Jane <Smith>", "12345")
+    assert "players/full/12345.png" in portrait
+    assert "&lt;Smith&gt;" in portrait
+    assert "players/full" not in fighter_portrait("Fighter", "123' onload='alert(1)")

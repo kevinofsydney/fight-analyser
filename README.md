@@ -41,7 +41,7 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | Page | |
 |------|--|
 | **Home** | Upcoming events and bouts with model odds, age and reach gaps; card changes in the last 7 days |
-| **Bout** | Tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels for each method whose probabilities pass the calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
+| **Bout** | Fighter portraits where available, current pro records and fight details; tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels for each method whose probabilities pass the calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
 | **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save |
 | **Saved Hypotheses** | Every YAML in `hypotheses/`, its latest result and which upcoming bouts it applies to |
 | **Fighter** | Profile, UFC history, stat trends as of each fight |
@@ -87,7 +87,7 @@ Code: [MIT](LICENSE). The license covers this repository's code, not the upstrea
 ## Data credits
 - [fight-canon-db](https://github.com/Jadevit/fight-canon-db) (MIT): fight history, round stats, odds
 - [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) (GPL-3.0 code; we use its data files): fallback history
-- ESPN's public scoreboard feed: upcoming cards
+- ESPN's public scoreboard feed: upcoming cards and fighter portrait IDs
 - [Wikipedia](https://en.wikipedia.org/wiki/List_of_UFC_events) (CC BY-SA), via the MediaWiki API: upcoming cards when ESPN is down
 - Judges' scorecards via fight-canon-db (from mmadecisions.com and ufc.com)
 
