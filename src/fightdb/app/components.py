@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import html
 import math
 from datetime import UTC, date, datetime
 from typing import Any
@@ -135,6 +136,43 @@ def format_closing_range(low: Any, high: Any) -> str:
     american = " to ".join(format_american_odds(value) for value in values)
     decimal = " to ".join(f"{decimal_odds_from_american(value):.2f}" for value in values)
     return f"{decimal} decimal ({american} American)"
+
+
+def fighter_portrait(fighter_name: str, espn_id: str | None) -> str:
+    """ESPN portrait with an initials placeholder when an ID or image is unavailable."""
+    initials = "".join(part[0] for part in fighter_name.split()[:2]).upper() or "?"
+    initials = html.escape(initials)
+    if not espn_id or not espn_id.isascii() or not espn_id.isdigit():
+        image = ""
+    else:
+        url = f"https://a.espncdn.com/i/headshots/mma/players/full/{espn_id}.png"
+        image = (
+            f'<div style="position:absolute;inset:0;background:url({url}) center bottom / '
+            'contain no-repeat" aria-hidden="true"></div>'
+        )
+    label = html.escape(f"{fighter_name} portrait, if available", quote=True)
+    return (
+        f'<div role="img" aria-label="{label}" style="position:relative;height:210px;'
+        "overflow:hidden;border-radius:10px;background:linear-gradient(145deg,#262a35,#14171e);"
+        'display:flex;align-items:center;justify-content:center;">'
+        f'<span style="font-size:4rem;font-weight:700;color:#69717f;">{initials}</span>'
+        f"{image}</div>"
+    )
+
+
+def pro_record(wins: Any, losses: Any, draws: Any) -> str:
+    values = (wins, losses, draws)
+    if any(value is None or pd.isna(value) for value in values):
+        return "—"
+    return "–".join(str(int(value)) for value in values)
+
+
+def odds_range(prices: pd.Series) -> str:
+    values = pd.to_numeric(prices, errors="coerce").dropna()
+    if values.empty:
+        return "—"
+    low, high = float(values.min()), float(values.max())
+    return f"{low:.2f}" if low == high else f"{low:.2f}–{high:.2f}"
 
 
 def level_vs_baseline(p: float, base: float) -> str:

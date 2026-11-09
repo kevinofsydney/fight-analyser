@@ -92,11 +92,97 @@ def num(x: object) -> float:
     return v
 
 
-st.header(f"{a.fighter_name}  vs  {b.fighter_name}")
+# Fighter details are current; bout snapshots and age remain as they were for the fight.
+bios = data.query(
+    "SELECT fighter_id, nickname, pro_wins, pro_losses, pro_draws FROM fighters WHERE fighter_id IN (?, ?)",
+    [a.fighter_id, b.fighter_id],
+).set_index("fighter_id")
+aliases = data.query(
+    "SELECT fighter_id, source_id FROM fighter_aliases WHERE source = ? AND fighter_id IN (?, ?)",
+    ["espn", a.fighter_id, b.fighter_id],
+)
+closing = (
+    data.query(
+        "SELECT fighter_id, close_low, close_high FROM odds WHERE bout_id = ?", [bout_id]
+    ).set_index("fighter_id")
+    if a.status == "completed"
+    else pd.DataFrame()
+)
+has_odds_table = not data.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_name = ?", ["upcoming_odds"]
+).empty
+prices = (
+    data.query(
+        """SELECT bookmaker, fighter_id, decimal_odds, updated_at, fetched_at
+           FROM upcoming_odds WHERE bout_id = ? ORDER BY bookmaker, fighter_id""",
+        [bout_id],
+    )
+    if a.status == "scheduled" and has_odds_table
+    else pd.DataFrame()
+)
+
 st.caption(
     f"{a.weight_class or a.division} · {int(a.scheduled_rounds) if num(a.scheduled_rounds) == num(a.scheduled_rounds) else '?'} rounds · "
     f"{a.event_name} · {components.fmt_date(a.event_date)}"
 )
+profile_cols = st.columns(2)
+for col, side in zip(profile_cols, (a, b), strict=True):
+    with col, st.container(border=True):
+        fighter_id = str(side.fighter_id)
+        matches = aliases.loc[aliases["fighter_id"] == fighter_id, "source_id"].dropna().astype(str)
+        espn_ids = sorted({value for value in matches if value.isascii() and value.isdigit()})
+        if not espn_ids and fighter_id.startswith("espn:"):
+            espn_ids = [fighter_id.removeprefix("espn:")]
+        espn_id = espn_ids[0] if len(espn_ids) == 1 else None
+        st.markdown(
+            components.fighter_portrait(str(side.fighter_name), espn_id), unsafe_allow_html=True
+        )
+        st.subheader(side.fighter_name)
+        bio = bios.loc[fighter_id] if fighter_id in bios.index else None
+        nickname = bio["nickname"] if bio is not None else None
+        st.caption(
+            f"“{nickname}”" if nickname is not None and pd.notna(nickname) and nickname else " "
+        )
+        record = (
+            components.pro_record(bio["pro_wins"], bio["pro_losses"], bio["pro_draws"])
+            if bio is not None
+            else "—"
+        )
+        if side.status == "completed":
+            quote = closing.loc[fighter_id] if fighter_id in closing.index else None
+            odds_value = (
+                components.format_closing_range(quote["close_low"], quote["close_high"])
+                if quote is not None
+                else "—"
+            )
+            odds_label = "Closing odds"
+        else:
+            odds_value = (
+                components.odds_range(
+                    prices.loc[prices["fighter_id"] == fighter_id, "decimal_odds"]
+                )
+                if not prices.empty
+                else "—"
+            )
+            odds_label = "Bookmaker odds (decimal)"
+        stats = [
+            ("Current rank", "—"),
+            ("Current pro record", record),
+            (odds_label, odds_value),
+            ("Age at bout", components.fmt_stat("age_years", num(side.self_age_years))),
+            ("Weigh-in weight", "—"),
+            ("Height", components.fmt_stat("height_cm", num(side.self_height_cm))),
+            ("Reach", components.fmt_stat("reach_cm", num(side.self_reach_cm))),
+            ("Gym", "—"),
+        ]
+        for label, value in stats:
+            label_col, value_col = st.columns([1, 1])
+            label_col.caption(label)
+            value_col.markdown(f"**{value}**")
+st.caption(
+    "Portraits: ESPN when available. Rankings, weigh-in weights and gyms aren't currently provided by the app's data sources. Pro records are current, including on past bouts."
+)
+
 if a.status == "completed":
     winner = a.fighter_name if a.won == 1 else b.fighter_name if b.won == 1 else None
     st.success(
@@ -136,9 +222,6 @@ if a.status == "completed":
 # --- Market odds ---------------------------------------------------------------------------
 st.subheader("Fight odds")
 if a.status == "completed":
-    closing = data.query(
-        "SELECT fighter_id, close_low, close_high FROM odds WHERE bout_id = ?", [bout_id]
-    ).set_index("fighter_id")
     columns = st.columns(2)
     for col, side in zip(columns, (a, b), strict=True):
         price = closing.loc[side.fighter_id] if side.fighter_id in closing.index else None
@@ -152,18 +235,6 @@ if a.status == "completed":
         "Historical closing price range from fight-canon-db; availability varies by fight and bookmaker."
     )
 else:
-    has_odds_table = not data.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_name = ?", ["upcoming_odds"]
-    ).empty
-    prices = (
-        data.query(
-            """SELECT bookmaker, fighter_id, decimal_odds, updated_at, fetched_at
-           FROM upcoming_odds WHERE bout_id = ? ORDER BY bookmaker, fighter_id""",
-            [bout_id],
-        )
-        if has_odds_table
-        else pd.DataFrame()
-    )
     if prices.empty:
         st.caption("No upcoming bookmaker odds are available for this fight yet.")
     else:
