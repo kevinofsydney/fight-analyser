@@ -172,3 +172,23 @@ def test_all_saved_hypotheses_run_against_current_schema(synthetic_db):
     for _, h in saved:
         hypothesis.evaluate(synthetic_db, h)
         hypothesis.matches_upcoming(synthetic_db, h)
+
+
+def test_matching_bout_sides_match_result_and_preserve_perspective(synthetic_db):
+    h = _h(condition=[{"feature": "diff_age_years", "op": ">=", "value": 5}])
+    result = hypothesis.evaluate(synthetic_db, h)
+    rows = hypothesis.matching_bout_sides(synthetic_db, h, limit=10_000)
+    assert len(rows) == result.n
+    assert sorted(rows["bout_id"]) == sorted(result.bout_ids)
+    assert (rows["diff_age_years"] >= 5).all()
+    assert rows["result"].eq("W").sum() == result.k
+    assert (rows["fighter_name"] != rows["opp_name"]).all()
+    page = hypothesis.matching_bout_sides(synthetic_db, h, limit=5, offset=5)
+    assert page["bout_id"].tolist() == rows["bout_id"].iloc[5:10].tolist()
+
+
+def test_matching_bout_sides_reject_invalid_pagination(synthetic_db):
+    with pytest.raises(ValueError):
+        hypothesis.matching_bout_sides(synthetic_db, _h(), limit=0)
+    with pytest.raises(ValueError):
+        hypothesis.matching_bout_sides(synthetic_db, _h(), offset=-1)

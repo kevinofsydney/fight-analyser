@@ -186,6 +186,25 @@ def evaluate(
     )
 
 
+def matching_bout_sides(
+    con: duckdb.DuckDBPyConnection, h: Hypothesis, *, limit: int = 100, offset: int = 0
+) -> pd.DataFrame:
+    """Return the exact historical fighter-sides counted by a hypothesis, newest first."""
+    if limit < 1 or offset < 0:
+        raise ValueError("limit must be positive and offset non-negative")
+    population, population_params = _population_sql(h)
+    condition, condition_params, columns = _condition_sql(h.condition)
+    features = list(dict.fromkeys(columns))
+    selected = ", ".join(f'"{column}"' for column in features)
+    extra = f", {selected}" if selected else ""
+    return con.execute(
+        f"""SELECT bout_id, event_date, event_name, fighter_name, opp_name, result, method{extra}
+            FROM bout_sides WHERE {population} AND ({condition})
+            ORDER BY event_date DESC, bout_id, fighter_id LIMIT ? OFFSET ?""",
+        [*population_params, *condition_params, limit, offset],
+    ).df()
+
+
 def _verdict(
     h: Hypothesis,
     n: int,
