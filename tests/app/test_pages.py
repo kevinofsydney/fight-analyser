@@ -78,6 +78,9 @@ def test_past_bout_shows_elo_and_round_stats(db):
     bout_id = con.execute(
         "SELECT bout_id FROM bouts WHERE status = 'completed' LIMIT 1"
     ).fetchone()[0]
+    stances = con.execute(
+        "SELECT fighter_name, self_stance FROM bout_sides WHERE bout_id = ?", [bout_id]
+    ).fetchall()
     con.close()
     at = AppTest.from_file(str(APP / "pages" / "1_Bout.py"), default_timeout=120)
     at.session_state["bout_id"] = bout_id
@@ -98,8 +101,11 @@ def test_past_bout_shows_elo_and_round_stats(db):
         for df in at.dataframe
         if "Stat" in df.value.columns and "Current pro record" in df.value["Stat"].values
     )
-    assert {"Age at bout", "Height", "Reach"}.issubset(set(profile["Stat"]))
+    assert {"Age at bout", "Height", "Reach", "Stance"}.issubset(set(profile["Stat"]))
     assert len(profile.columns) == 3
+    stance_row = profile.loc[profile["Stat"] == "Stance"].iloc[0]
+    for fighter, stance in stances:
+        assert stance_row[fighter] == (stance.strip() if stance and stance.strip() else "—")
     assert any("Elo before fight" in m.label for m in at.metric)
     assert any(h.value == "Fight statistics by round" for h in at.subheader)
 
