@@ -10,7 +10,7 @@ Updated 2026-11-09. This is the handoff file: read it after [AGENTS.md](../AGENT
 - **Data:** the GitHub Actions "Daily refresh" builds `fightdb.duckdb` and publishes it to the `data-latest` release, and the app downloads it via `DATA_RELEASE_URL`. The DB holds about 9,000 UFC bouts and 71,518 judge round scores.
 - **Quality:** CI on `main` runs lint, formatting checks, type checking, offline tests, secret scanning and a Docker build. Branch protection is on for `main`.
 - **Owner workflow:** agents may merge their changes after required checks pass; the owner will not review code.
-- **Upcoming odds:** The Odds API integration is implemented, but `ODDS_API_KEY` has not been configured in GitHub Actions. Until it is, upcoming odds will not populate; historical closing odds need no key.
+- **Upcoming odds:** The Odds API integration supplies upcoming bookmaker prices when `ODDS_API_KEY` is configured in GitHub Actions. Historical closing odds need no key.
 - **Fight wear:** recorded prior UFC strikes and knockdowns absorbed, high-absorption fight counts, recent exposure, last KO loss and five-round-war features are implemented. Incomplete round-stat histories remain unknown. Per the owner, do not add these and related November 2026 hypothesis features to prediction models or evaluate them for model improvement.
 - **Licence:** MIT.
 
@@ -63,7 +63,7 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 | ID | Task | |
 |----|------|--|
 | M1 | **Decision-label watch.** In the method model, big favourites winning on points are under-predicted (0.5–0.6 bin: 53% predicted, 64% observed, n=47). Once that bin has 100+ fighters in the last three test years and is still off by more than 5 pp, the gate hides only the decision label. Try adding `self_p_win` as a feature to the method model and compare walk-forward log loss; keep it only if log loss improves and every method stays calibrated. | 🔴 |
-| M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented; `ODDS_API_KEY` setup is pending. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
+| M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
 | M3 | **Multi-variable hypotheses** (PRD §10): logistic regression with covariates, so "older by 8+ years" can be tested controlling for Elo gap. Add an optional `controls:` list to the hypothesis YAML schema (a contract change in `analytics/schema.py`); report the adjusted odds ratio and CI. | 🔴 |
 | M4 | **Insight finder** (PRD §10): scan every numeric feature × outcome, report effects with Benjamini–Hochberg FDR correction. CLI first (`fightdb hypothesis scan`), page later. | 🔴 |
 

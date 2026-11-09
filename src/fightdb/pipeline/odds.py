@@ -16,6 +16,23 @@ def init_table(con: duckdb.DuckDBPyConnection) -> None:
         PRIMARY KEY (bout_id, fighter_id, bookmaker_key))""")
 
 
+def reserve_daily_poll(con: duckdb.DuckDBPyConnection, now: datetime) -> bool:
+    """Reserve this UTC day before making a paid request, even if it fails or returns no data."""
+    con.execute("""CREATE TABLE IF NOT EXISTS upcoming_odds_polls (
+        poll_date DATE PRIMARY KEY, attempted_at TIMESTAMP NOT NULL)""")
+    if con.execute(
+        "SELECT 1 FROM upcoming_odds_polls WHERE poll_date = ?", [now.date()]
+    ).fetchone():
+        return False
+    # Existing databases may contain today's prices from before the daily guard existed.
+    if con.execute(
+        "SELECT 1 FROM upcoming_odds WHERE CAST(fetched_at AS DATE) = ? LIMIT 1", [now.date()]
+    ).fetchone():
+        return False
+    con.execute("INSERT INTO upcoming_odds_polls VALUES (?, ?)", [now.date(), now])
+    return True
+
+
 def store(con: duckdb.DuckDBPyConnection, events: list[OddsEvent], fetched_at: datetime) -> int:
     """Match both names and date exactly; ambiguous and unmatched listings are ignored."""
     init_table(con)

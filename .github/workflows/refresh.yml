@@ -38,10 +38,34 @@ jobs:
           mkdir -p data
           gh release download "$RELEASE_TAG" --pattern fightdb.duckdb --dir data || echo "No previous database; starting fresh."
 
+      # Reserve a UTC day before the request. Unlike the database, this marker survives a
+      # failed build or publish, so reruns cannot accidentally spend another API credit.
+      - name: Reserve today's odds request
+        id: odds_gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ODDS_CONFIGURED: ${{ secrets.ODDS_API_KEY != '' }}
+        run: |
+          set -eu
+          echo "allowed=false" >> "$GITHUB_OUTPUT"
+          if [ "$ODDS_CONFIGURED" != "true" ]; then exit 0; fi
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --title "Latest data" --latest=false \
+              --notes "Daily fight data and odds request markers."
+          marker="odds-poll-$(date -u +%F).txt"
+          assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+          if grep -Fxq "$marker" <<< "$assets"; then
+            echo "Odds were already requested today (UTC)."
+            exit 0
+          fi
+          printf 'Reserved before requesting upcoming odds.\n' > "$marker"
+          gh release upload "$RELEASE_TAG" "$marker"
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
+
       - name: Refresh (backfill on the first run)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_KEY: ${{ steps.odds_gate.outputs.allowed == 'true' && secrets.ODDS_API_KEY || '' }}
         run: |
           if [ -f "$DB_PATH" ]; then uv run fightdb -v refresh; else uv run fightdb -v backfill; fi
 
