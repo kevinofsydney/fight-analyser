@@ -68,7 +68,7 @@ a, b = sides.iloc[0], sides.iloc[1]
 def num(x: object) -> float:
     try:
         v = float(x)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return math.nan
     return v
 

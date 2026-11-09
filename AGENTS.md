@@ -47,7 +47,7 @@ Each entry has `exc_type`, `exc_message`, `origin` (the innermost `src/fightdb` 
 Run Python through `make` targets, or prefix commands with `PYTHONPATH=src` (e.g. `PYTHONPATH=src uv run fightdb --help`). macOS can mark uv's editable-install `.pth` file as hidden, and Python then skips it.
 
 ## Conventions
-- Python 3.12, `src/` layout, package name `fightdb`.
+- Python 3.14, `src/` layout, package name `fightdb`.
 - Type hints everywhere. Pydantic models at module boundaries.
 - Units inside the codebase: **cm, seconds, `datetime.date`**. Convert only for display.
 - Source adapters take local files or parsed JSON and return models from `sources/models.py`. Downloading is done only in `sources/http.py`.
