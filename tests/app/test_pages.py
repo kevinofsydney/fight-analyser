@@ -106,7 +106,12 @@ def test_past_bout_shows_elo_and_round_stats(db):
     stance_row = profile.loc[profile["Stat"] == "Stance"].iloc[0]
     for fighter, stance in stances:
         assert stance_row[fighter] == (stance.strip() if stance and stance.strip() else "—")
-    assert any("Elo before fight" in m.label for m in at.metric)
+    elo_metrics = [m for m in at.metric if "Elo before fight" in m.label]
+    assert elo_metrics and all("K × (result − expected)" in m.help for m in elo_metrics)
+    assert any(e.label == "How Elo was calculated" for e in at.expander)
+    assert any(
+        "Opponent Elo" in df.value.columns and "Change" in df.value.columns for df in at.dataframe
+    ) or any("No earlier UFC fights" in c.value for c in at.caption)
     assert any(h.value == "Fight statistics by round" for h in at.subheader)
 
 
