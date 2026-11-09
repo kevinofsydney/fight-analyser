@@ -7,9 +7,11 @@ A UFC fight database and analysis tool:
 - **xG-style projections:** expected takedowns, strikes, control time and knockdowns per round; win and method-of-victory probabilities from a calibrated model.
 - **Daily refresh:** new results and upcoming cards re-sync once a day, and card changes (cancellations, replacements, moved bouts) are logged.
 
+**Live app:** https://fight-analyser.streamlit.app/ (password-protected). **Status and what's left to build:** [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
+
 ## Quick start
 
-Needs [uv](https://docs.astral.sh/uv/) (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Needs [uv](https://docs.astral.sh/uv/) (it installs Python 3.14 for you) (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
 cp .env.example .env   # optional; defaults work. .env is gitignored.
