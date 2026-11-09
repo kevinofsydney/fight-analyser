@@ -151,5 +151,7 @@ def test_saved_hypothesis_shows_matching_fights(db):
     at.session_state["hypothesis_1"] = True
     at.run()
     assert not at.exception, [e.value for e in at.exception]
+    assert any("Explore historical outcomes" in m.value for m in at.markdown)
+    assert any("logistic fit" in c.value for c in at.caption)
     assert any("Previous matching fights" in m.value for m in at.markdown)
     assert any("Matching fighter" in df.value.columns for df in at.dataframe)
