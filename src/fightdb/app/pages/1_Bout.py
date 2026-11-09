@@ -126,61 +126,95 @@ st.caption(
     f"{a.event_name} · {components.fmt_date(a.event_date)}"
 )
 profile_cols = st.columns(2)
+profiles = []
 for col, side in zip(profile_cols, (a, b), strict=True):
-    with col, st.container(border=True):
-        fighter_id = str(side.fighter_id)
-        matches = aliases.loc[aliases["fighter_id"] == fighter_id, "source_id"].dropna().astype(str)
-        espn_ids = sorted({value for value in matches if value.isascii() and value.isdigit()})
-        if not espn_ids and fighter_id.startswith("espn:"):
-            espn_ids = [fighter_id.removeprefix("espn:")]
-        espn_id = espn_ids[0] if len(espn_ids) == 1 else None
+    fighter_id = str(side.fighter_id)
+    matches = aliases.loc[aliases["fighter_id"] == fighter_id, "source_id"].dropna().astype(str)
+    espn_ids = sorted({value for value in matches if value.isascii() and value.isdigit()})
+    if not espn_ids and fighter_id.startswith("espn:"):
+        espn_ids = [fighter_id.removeprefix("espn:")]
+    espn_id = espn_ids[0] if len(espn_ids) == 1 else None
+    with col:
         st.markdown(
             components.fighter_portrait(str(side.fighter_name), espn_id), unsafe_allow_html=True
         )
         st.subheader(side.fighter_name)
         bio = bios.loc[fighter_id] if fighter_id in bios.index else None
         nickname = bio["nickname"] if bio is not None else None
-        st.caption(
-            f"“{nickname}”" if nickname is not None and pd.notna(nickname) and nickname else " "
-        )
-        record = (
-            components.pro_record(bio["pro_wins"], bio["pro_losses"], bio["pro_draws"])
-            if bio is not None
+        if nickname is not None and pd.notna(nickname) and nickname:
+            st.caption(f"“{nickname}”")
+    record = (
+        components.pro_record(bio["pro_wins"], bio["pro_losses"], bio["pro_draws"])
+        if bio is not None
+        else "—"
+    )
+    if side.status == "completed":
+        quote = closing.loc[fighter_id] if fighter_id in closing.index else None
+        odds_value = (
+            components.format_closing_range(quote["close_low"], quote["close_high"])
+            if quote is not None
             else "—"
         )
-        if side.status == "completed":
-            quote = closing.loc[fighter_id] if fighter_id in closing.index else None
-            odds_value = (
-                components.format_closing_range(quote["close_low"], quote["close_high"])
-                if quote is not None
-                else "—"
-            )
-            odds_label = "Closing odds"
-        else:
-            odds_value = (
-                components.odds_range(
-                    prices.loc[prices["fighter_id"] == fighter_id, "decimal_odds"]
-                )
-                if not prices.empty
-                else "—"
-            )
-            odds_label = "Bookmaker odds (decimal)"
-        stats = [
-            ("Current rank", "—"),
-            ("Current pro record", record),
-            (odds_label, odds_value),
-            ("Age at bout", components.fmt_stat("age_years", num(side.self_age_years))),
-            ("Weigh-in weight", "—"),
-            ("Height", components.fmt_stat("height_cm", num(side.self_height_cm))),
-            ("Reach", components.fmt_stat("reach_cm", num(side.self_reach_cm))),
-            ("Gym", "—"),
+        odds_label = "Closing odds"
+    else:
+        odds_value = (
+            components.odds_range(prices.loc[prices["fighter_id"] == fighter_id, "decimal_odds"])
+            if not prices.empty
+            else "—"
+        )
+        odds_label = "Bookmaker odds (decimal)"
+    profiles.append(
+        [
+            "—",
+            record,
+            odds_value,
+            components.fmt_stat("age_years", num(side.self_age_years)),
+            "—",
+            components.fmt_stat("height_cm", num(side.self_height_cm)),
+            components.fmt_stat("reach_cm", num(side.self_reach_cm)),
+            "—",
         ]
-        for label, value in stats:
-            label_col, value_col = st.columns([1, 1])
-            label_col.caption(label)
-            value_col.markdown(f"**{value}**")
-st.caption(
-    "Portraits: ESPN when available. Rankings, weigh-in weights and gyms aren't currently provided by the app's data sources. Pro records are current, including on past bouts."
+    )
+
+profile_table = pd.DataFrame(
+    {
+        "Stat": [
+            "Current rank",
+            "Current pro record",
+            odds_label,
+            "Age at bout",
+            "Weigh-in weight",
+            "Height",
+            "Reach",
+            "Gym",
+        ],
+        str(a.fighter_name): profiles[0],
+        str(b.fighter_name): profiles[1],
+    }
+)
+
+
+def highlight_profile_advantage(row: pd.Series) -> list[str]:
+    fields = {
+        "Age at bout": ("self_age_years", True),
+        "Height": ("self_height_cm", False),
+        "Reach": ("self_reach_cm", False),
+    }
+    styles = [""] * len(row)
+    if row["Stat"] in fields:
+        field, lower_is_better = fields[row["Stat"]]
+        left, right = num(a[field]), num(b[field])
+        if math.isfinite(left) and math.isfinite(right) and left != right:
+            winner = 1 if (left < right if lower_is_better else left > right) else 2
+            styles[winner] = "color: #26d16d; font-weight: bold"
+    return styles
+
+
+st.dataframe(
+    profile_table.style.apply(highlight_profile_advantage, axis=1),
+    hide_index=True,
+    width="stretch",
+    height="content",
 )
 
 if a.status == "completed":
