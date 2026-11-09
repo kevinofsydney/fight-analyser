@@ -133,6 +133,58 @@ if a.status == "completed":
     else:
         st.dataframe(fight_stats, hide_index=True, width="stretch")
 
+# --- Market odds ---------------------------------------------------------------------------
+st.subheader("Fight odds")
+if a.status == "completed":
+    closing = data.query(
+        "SELECT fighter_id, close_low, close_high FROM odds WHERE bout_id = ?", [bout_id]
+    ).set_index("fighter_id")
+    columns = st.columns(2)
+    for col, side in zip(columns, (a, b), strict=True):
+        price = closing.loc[side.fighter_id] if side.fighter_id in closing.index else None
+        col.metric(
+            f"{side.fighter_name} · closing odds",
+            components.format_closing_range(price["close_low"], price["close_high"])
+            if price is not None
+            else "—",
+        )
+    st.caption(
+        "Historical closing price range from fight-canon-db; availability varies by fight and bookmaker."
+    )
+else:
+    has_odds_table = not data.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_name = ?", ["upcoming_odds"]
+    ).empty
+    prices = (
+        data.query(
+            """SELECT bookmaker, fighter_id, decimal_odds, updated_at, fetched_at
+           FROM upcoming_odds WHERE bout_id = ? ORDER BY bookmaker, fighter_id""",
+            [bout_id],
+        )
+        if has_odds_table
+        else pd.DataFrame()
+    )
+    if prices.empty:
+        st.caption("No upcoming bookmaker odds are available for this fight yet.")
+    else:
+        names = {a.fighter_id: a.fighter_name, b.fighter_id: b.fighter_name}
+        prices["Fighter"] = prices["fighter_id"].map(names)
+        prices["Decimal odds"] = prices["decimal_odds"].map(lambda value: f"{value:.2f}")
+        prices["Bookmaker update (UTC)"] = prices["updated_at"].map(
+            lambda value: components.fmt_date(value, with_time=True)
+        )
+        st.dataframe(
+            prices[["bookmaker", "Fighter", "Decimal odds", "Bookmaker update (UTC)"]].rename(
+                columns={"bookmaker": "Bookmaker"}
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption(
+            f"The Odds API · Australian bookmakers · last fetched {components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC. Odds may have changed since the last daily refresh."
+        )
+st.caption("Prices are for comparison and are not betting advice.")
+
 # --- Win and method probabilities ---------------------------------------------------------
 div = a.division
 base = data.query(

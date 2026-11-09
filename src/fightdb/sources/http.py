@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -82,3 +83,21 @@ def release_asset_url(repo: str, asset: str, tag: str | None = None) -> str:
     if tag:
         return f"https://github.com/{repo}/releases/download/{tag}/{asset}"
     return f"https://github.com/{repo}/releases/latest/download/{asset}"
+
+
+def upcoming_odds(client: httpx.Client, api_key: str) -> Any:
+    """Fetch Australian MMA moneylines without logging the credential-bearing URL."""
+    logger = logging.getLogger("httpx")
+    old_level = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        try:
+            return get_json(
+                client,
+                "https://api.the-odds-api.com/v4/sports/mma_mixed_martial_arts/odds",
+                {"apiKey": api_key, "regions": "au", "markets": "h2h", "oddsFormat": "decimal"},
+            )
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Odds API request failed ({type(exc).__name__})") from None
+    finally:
+        logger.setLevel(old_level)

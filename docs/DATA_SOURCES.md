@@ -8,6 +8,7 @@ Research done 2026-10-29: where Fight Analyser gets its data, and why.
 |------|----------------|----------|----------------|
 | Completed fights, round-by-round stats, fighter bios, results | **[fight-canon-db](https://github.com/Jadevit/fight-canon-db)** SQLite release (`canon.db`) | **[Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats)** CSVs | Download one file per day; no scraping |
 | Historical betting odds (for calibration, not betting) | fight-canon-db `odds` table | none needed (nice-to-have) | Same file |
+| Upcoming fight-winner odds | [The Odds API](https://the-odds-api.com/sports/mma-ufc-odds.html) (optional key; Australian bookmakers) | none | One daily MMA h2h request; exact two-fighter and event-date match |
 | **Upcoming cards** | **ESPN's public JSON** (`site.api.espn.com/.../mma/ufc/scoreboard`) | Wikipedia (MediaWiki API) event pages | One small JSON request per event |
 
 **Don't scrape UFCStats.com ourselves.** As of 2026-10-29, every UFCStats page (events, fights, upcoming) returns a JavaScript "Checking your browser…" challenge to plain HTTP clients. Getting past it would mean evading bot detection, which we won't do. Two GitHub projects already publish that data every day, so we consume theirs.

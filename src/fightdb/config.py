@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     overrides_dir: Path = Path("data/overrides")
     hypotheses_dir: Path = Path("hypotheses")
 
+    odds_api_key: str = ""
+
     history_source: Literal["fight_canon", "greco"] = "fight_canon"
     history_stale_days: int = 7
     # Data-quality gate (pipeline/quality.py); measured 2026-11-09: 5.5% NULL reach, 100% coverage.

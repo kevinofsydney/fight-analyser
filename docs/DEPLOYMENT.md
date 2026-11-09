@@ -131,6 +131,8 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 Repo → **Actions → "Daily refresh" → Run workflow**. The first run does a full backfill (a couple of minutes). When it finishes, **Releases** should show `data-latest` with `fightdb.duckdb` attached.
 After this, it runs every day on the cron in `.github/workflows/refresh.yml`.
 
+To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions repository secret (Settings → Secrets and variables → Actions). Get a key from [The Odds API](https://the-odds-api.com/). The refresh workflow reads the secret; it is not needed in Streamlit secrets.
+
 **B4. Deploy the app**
 1. Go to https://share.streamlit.io and sign in with GitHub.
 2. **Create app** → pick the repo `kevinofsydney/fight-analyser`, branch `main`, main file `src/fightdb/app/Home.py`.

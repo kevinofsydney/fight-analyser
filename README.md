@@ -64,6 +64,10 @@ Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypoth
 
 Every number is point-in-time: a 2015 bout only sees fights before it. Each hypothesis you run in a session counts toward a multiple-comparisons reminder.
 
+## Fight odds
+
+The Bout page shows historical closing price ranges where fight-canon-db has them. To show upcoming Australian bookmaker prices, obtain an API key from [The Odds API](https://the-odds-api.com/) and set `ODDS_API_KEY` in your local `.env` or as a GitHub Actions repository secret. The daily refresh makes one request for Australian head-to-head odds, matches both fighters and event date, and records when the quotes were fetched. Without a key, upcoming odds are unavailable and the rest of the app continues to work. Prices can change between refreshes.
+
 ## Hosting
 
 Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). GitHub starts scheduled workflows late: the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC, so on the free path cards can be up to about 8 hours older than the cron suggests. The homelab cron runs on time. Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`) go in `.env` or the host's secret store.
