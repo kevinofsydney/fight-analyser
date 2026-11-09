@@ -12,6 +12,7 @@ import streamlit as st
 from fightdb.app import components, data
 from fightdb.features.snapshots import _wear_by_day
 from fightdb.features.stat_meta import BY_KEY
+from fightdb.models import ratings
 
 components.page("Fighter", "👤")
 st.title("Fighter")
@@ -116,6 +117,7 @@ rounds_complete = (
 absorption = wear_input[["bout_id", "opp_sig_l"]].copy()
 absorption["opp_sig_l"] = absorption["opp_sig_l"].where(rounds_complete)
 fight_rows = fight_rows.merge(absorption, on="bout_id", how="left")
+fight_rows["self_elo"] = fight_rows["self_elo"].round().astype("Int64")
 shown = components.format_dates(
     fight_rows[
         [
@@ -163,19 +165,71 @@ options = [
     "idx_durability",
 ]
 picked = st.multiselect("Stats", options, default=["elo"], format_func=lambda k: BY_KEY[k].label)
-if picked:
-    long = hist.melt(
-        id_vars=["event_date"],
-        value_vars=[f"self_{k}" for k in picked],
-        var_name="stat",
-        value_name="value",
-    )
-    long["stat"] = long["stat"].str.removeprefix("self_").map(lambda k: BY_KEY[k].label)
+OUTCOME = {"W": "Beat", "L": "Lost to", "D": "Drew with", "NC": "No contest with"}
+
+
+def fight_label(row: pd.Series) -> str:
+    if row["status"] != "completed":
+        return f"Upcoming vs {row['opp_name']}"
+    return f"{OUTCOME.get(row['result'], 'Fought')} {row['opp_name']}"
+
+
+trend = hist.copy()
+trend["Fight"] = trend.apply(fight_label, axis=1)
+trend["Method"] = trend["method"].where(trend["status"] == "completed").fillna("—")
+trend["Round"] = (
+    trend["end_round"]
+    .where(trend["status"] == "completed")
+    .map(lambda r: "—" if pd.isna(r) else f"{r:.0f}")
+)
+delta = [
+    ratings.elo_delta(r.self_elo, r.opp_elo, r.result, r.method_group)
+    if r.status == "completed"
+    else None
+    for r in trend.itertuples()
+]
+# Change is taken from the rounded values so before + change = after, matching the next point.
+trend["elo_before"] = trend["self_elo"].round()
+trend["elo_after"] = [
+    None if d is None else round(b + d) for b, d in zip(trend["self_elo"], delta, strict=True)
+]
+trend["elo_change"] = trend["elo_after"] - trend["elo_before"]
+details = [
+    alt.Tooltip("event_date:T", title="Date", format="%-d %b %Y"),
+    alt.Tooltip("Fight:N"),
+    alt.Tooltip("Method:N"),
+    alt.Tooltip("Round:N"),
+]
+for key in picked:
+    stat = BY_KEY[key]
+    if key == "elo":
+        y_field = "elo_before"
+        values = [
+            alt.Tooltip("elo_before:Q", title="Elo before fight", format=".0f"),
+            alt.Tooltip("elo_change:Q", title="Elo change", format="+.0f"),
+            alt.Tooltip("elo_after:Q", title="Elo after fight", format=".0f"),
+        ]
+    else:
+        y_field = f"self_{key}"
+        values = [alt.Tooltip(f"{y_field}:Q", title=f"{stat.label} before fight", format=".2f")]
     st.altair_chart(
-        alt.Chart(long)
-        .mark_line(point=True)
-        .encode(x="event_date:T", y=alt.Y("value:Q", scale=alt.Scale(zero=False)), color="stat:N")
-        .facet(row="stat:N")
-        .resolve_scale(y="independent"),
+        alt.Chart(trend, title=stat.label)
+        .mark_line(point=alt.OverlayMarkDef(size=60, filled=True))
+        .encode(
+            x=alt.X("event_date:T", title="Fight date"),
+            y=alt.Y(
+                f"{y_field}:Q",
+                title=None,
+                scale=alt.Scale(zero=False),
+                axis=alt.Axis(format=".0f") if key == "elo" else alt.Axis(),
+            ),
+            tooltip=details + values,
+        )
+        .properties(height=260),
         width="stretch",
+    )
+if "elo" in picked:
+    st.caption(
+        "Each point is the rating going into that fight; hover to see the result and how much "
+        "it moved the rating."
     )

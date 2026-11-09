@@ -127,6 +127,13 @@ def test_fighter_wear_profile_renders(db):
     assert not at.exception, [e.value for e in at.exception]
     assert any(h.value == "Fight wear (UFC history)" for h in at.subheader)
     assert any(m.label == "Strikes absorbed" for m in at.metric)
+    fights = next(df.value for df in at.dataframe if "Elo before" in df.value.columns)
+    assert str(fights["Elo before"].dtype) == "Int64"
+    charts = at.get("vega_lite_chart")
+    assert len(charts) == 1
+    spec = charts[0].proto.spec
+    for title in ("Fight", "Method", "Round", "Elo before fight", "Elo change", "Elo after fight"):
+        assert f'"{title}"' in spec
 
 
 def test_hypothesis_date_allows_recent_start(db):

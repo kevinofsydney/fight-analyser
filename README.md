@@ -45,7 +45,7 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | **Bout** | Fighter portraits and a side-by-side table of current pro records, age at fight, height, reach, stance and odds (with physical advantages highlighted); pre-fight Elo (hover for the formula, or open "How Elo was calculated" for each fight) and tale of the tape; past round statistics; betting line movement across daily odds fetches; model outlook and its inputs (hover over index help icons for calculations); per-round projections, matching hypotheses and common opponents. Reset returns to the next upcoming main event. |
 | **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save. The From date is an inclusive starting date; results include later available fights. |
 | **Saved Hypotheses** | Open a saved hypothesis to explore historical outcome plots and matching fights, select a fight for its Bout page, and see upcoming matches. |
-| **Fighter** | Profile, recorded fight wear and per-fight strikes absorbed; select a historical bout to open it; trends as of each fight. |
+| **Fighter** | Profile, recorded fight wear and per-fight strikes absorbed; select a historical bout to open it; trends as of each fight (hover a point for the opponent, result, method, round and Elo change). |
 | **SQL** | Read-only console (no file or network access) over the DuckDB database, including `judge_rounds` (every judge's round score next to that round's stats) |
 | **Status** | Refresh runs (including data-quality failures and Wikipedia fallback days), unmatched fighters, model calibration vs the closing betting line |
 
