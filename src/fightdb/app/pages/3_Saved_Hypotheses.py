@@ -76,7 +76,10 @@ for h, r, up in details:
             st.caption(f"⚠️ {w}")
         if not up.empty:
             st.dataframe(
-                up[["event_name", "event_date", "fighter_name", "opp_name"]],
+                components.format_dates(
+                    up[["event_name", "event_date", "fighter_name", "opp_name"]],
+                    dates=("event_date",),
+                ),
                 hide_index=True,
                 width="stretch",
             )

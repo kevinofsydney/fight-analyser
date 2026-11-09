@@ -50,8 +50,9 @@ c[4].metric("Elo now", f"{latest['self_elo']:.0f}")
 
 st.subheader("UFC fights")
 done = hist[hist["status"] == "completed"]
-st.dataframe(
-    done[
+fight_rows = done.sort_values("event_date", ascending=False).reset_index(drop=True)
+shown = components.format_dates(
+    fight_rows[
         [
             "event_date",
             "event_name",
@@ -62,12 +63,20 @@ st.dataframe(
             "self_elo",
             "self_p_win",
         ]
-    ]
-    .sort_values("event_date", ascending=False)
-    .rename(columns={"self_elo": "Elo before", "self_p_win": "Model win % (out-of-sample)"}),
+    ],
+    dates=("event_date",),
+).rename(columns={"self_elo": "Elo before", "self_p_win": "Model win % (out-of-sample)"})
+selection = st.dataframe(
+    shown,
     hide_index=True,
     width="stretch",
+    on_select="rerun",
+    selection_mode="single-row",
 )
+if selection.selection.rows:
+    st.session_state["bout_id"] = fight_rows.iloc[selection.selection.rows[0]]["bout_id"]
+    st.switch_page("pages/1_Bout.py")
+st.caption("Select a fight to review its statistics.")
 
 st.subheader("Trends (as of each fight)")
 options = [

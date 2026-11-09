@@ -23,7 +23,7 @@ with right:
     else:
         for row in changes.itertuples():
             st.markdown(
-                f"**{row.change_type.replace('_', ' ')}** · {row.summary}  \n<small>{row.detected_at:%a %d %b %H:%M} UTC</small>",
+                f"**{row.change_type.replace('_', ' ')}** · {row.summary}  \n<small>{components.fmt_date(row.detected_at, with_time=True)} UTC</small>",
                 unsafe_allow_html=True,
             )
 
@@ -32,7 +32,8 @@ with left:
         st.info("No upcoming events found. The ESPN feed may be empty or the last refresh failed.")
     for ev in events.itertuples():
         with st.expander(
-            f"**{ev.name}** · {ev.date:%a %d %b %Y} · {ev.bouts} bouts", expanded=ev.Index == 0
+            f"**{ev.name}** · {components.fmt_date(ev.date)} · {ev.bouts} bouts",
+            expanded=ev.Index == 0,
         ):
             if ev.location:
                 st.caption(ev.location)

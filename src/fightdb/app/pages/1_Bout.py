@@ -29,12 +29,21 @@ events = data.query(
 preset = st.session_state.get("bout_id")
 preset_event = None
 if preset:
-    row = data.query("SELECT event_id FROM bouts WHERE bout_id = ?", [preset])
+    row = data.query(
+        "SELECT e.event_id, e.name, e.date, e.status FROM events e JOIN bouts b USING (event_id) WHERE b.bout_id = ?",
+        [preset],
+    )
     preset_event = row["event_id"].iloc[0] if not row.empty else None
+    if preset_event and preset_event not in events["event_id"].values:
+        events = pd.concat([events, row], ignore_index=True)
 
 ev_ids = events["event_id"].tolist()
 ev_label = dict(
-    zip(events["event_id"], events["name"] + " · " + events["date"].astype(str), strict=True)
+    zip(
+        events["event_id"],
+        events["name"] + " · " + events["date"].map(components.fmt_date),
+        strict=True,
+    )
 )
 c1, c2 = st.columns(2)
 event_id = c1.selectbox(
@@ -76,7 +85,7 @@ def num(x: object) -> float:
 st.header(f"{a.fighter_name}  vs  {b.fighter_name}")
 st.caption(
     f"{a.weight_class or a.division} · {int(a.scheduled_rounds) if num(a.scheduled_rounds) == num(a.scheduled_rounds) else '?'} rounds · "
-    f"{a.event_name} · {a.event_date:%d %b %Y}"
+    f"{a.event_name} · {components.fmt_date(a.event_date)}"
 )
 if a.status == "completed":
     winner = a.fighter_name if a.won == 1 else b.fighter_name if b.won == 1 else None
@@ -84,11 +93,35 @@ if a.status == "completed":
         f"Result: {winner + ' won' if winner else 'No winner'} · {a.method or ''} · round {a.end_round}"
     )
 
+elo_cols = st.columns(2)
+for col, side in zip(elo_cols, (a, b), strict=True):
+    col.metric(
+        f"{side.fighter_name} · Elo before fight",
+        f"{num(side.self_elo):.0f}" if not math.isnan(num(side.self_elo)) else "—",
+    )
+
 for side in (a, b):
     if num(side.self_ufc_fights) < 3:
         st.warning(
             f"{side.fighter_name} has {int(num(side.self_ufc_fights))} prior UFC fights: rates are mostly the division average (shrinkage) and noisy."
         )
+
+if a.status == "completed":
+    fight_stats = data.query(
+        """SELECT r.round AS "Round", f.name AS "Fighter", r.kd AS "Knockdowns",
+                  r.sig_l AS "Sig. strikes landed", r.sig_a AS "Sig. strikes attempted",
+                  r.tot_l AS "Total strikes landed", r.tot_a AS "Total strikes attempted",
+                  r.td_l AS "Takedowns landed", r.td_a AS "Takedowns attempted",
+                  r.sub_att AS "Submission attempts", r.rev AS "Reversals", r.ctrl_s AS "Control seconds"
+           FROM round_stats r JOIN fighters f USING (fighter_id)
+           WHERE r.bout_id = ? ORDER BY r.round, f.name""",
+        [bout_id],
+    )
+    st.subheader("Fight statistics by round")
+    if fight_stats.empty:
+        st.caption("Round statistics are not available for this fight.")
+    else:
+        st.dataframe(fight_stats, hide_index=True, width="stretch")
 
 # --- Win and method probabilities ---------------------------------------------------------
 div = a.division
@@ -273,4 +306,6 @@ common = data.query(
 )
 if not common.empty:
     st.subheader("Common opponents")
-    st.dataframe(common, hide_index=True, width="stretch")
+    st.dataframe(
+        components.format_dates(common, dates=("event_date",)), hide_index=True, width="stretch"
+    )
