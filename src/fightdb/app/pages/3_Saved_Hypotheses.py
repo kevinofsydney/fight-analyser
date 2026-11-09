@@ -67,8 +67,10 @@ st.dataframe(
     hide_index=True,
     width="stretch",
 )
-for h, r, up in details:
-    with st.expander(h.title):
+for index, (h, r, up) in enumerate(details):
+    with st.expander(h.title, key=f"hypothesis_{index}", on_change="rerun") as panel:
+        if not panel.open:
+            continue
         if h.description:
             st.write(h.description)
         st.write(r.verdict)
@@ -83,4 +85,54 @@ for h, r, up in details:
                 hide_index=True,
                 width="stretch",
             )
+        st.markdown("**Previous matching fights**")
+        st.caption(
+            "Each row is the fighter who matched the condition; the result is from their perspective. "
+            "Select a row to open the fight."
+        )
+        if not r.n:
+            st.caption("No previous fights match this hypothesis.")
+        else:
+            page_count = (r.n + 99) // 100
+            page = int(
+                st.number_input(
+                    "Page",
+                    min_value=1,
+                    max_value=page_count,
+                    value=1,
+                    key=f"history_page_{index}",
+                    disabled=page_count == 1,
+                    help=f"Showing up to 100 rows per page, newest first; {r.n:,} matching fighter-sides.",
+                )
+            )
+            con = data.connect()
+            try:
+                previous = hypothesis.matching_bout_sides(
+                    con, h, limit=100, offset=(page - 1) * 100
+                )
+            finally:
+                con.close()
+            shown = components.format_dates(
+                previous.drop(columns=["bout_id"]), dates=("event_date",)
+            ).rename(
+                columns={
+                    "event_date": "Date",
+                    "event_name": "Event",
+                    "fighter_name": "Matching fighter",
+                    "opp_name": "Opponent",
+                    "result": "Result",
+                    "method": "Method",
+                }
+            )
+            selection = st.dataframe(
+                shown,
+                hide_index=True,
+                width="stretch",
+                on_select="rerun",
+                selection_mode="single-row",
+                key=f"history_fights_{index}_{page}",
+            )
+            if selection.selection.rows:
+                st.session_state["bout_id"] = previous.iloc[selection.selection.rows[0]]["bout_id"]
+                st.switch_page("pages/1_Bout.py")
         st.code(schema.to_yaml(h), language="yaml")
