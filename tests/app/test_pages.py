@@ -240,6 +240,13 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         "INSERT INTO upcoming_odds VALUES (?, ?, 'book', 'Example Book', 1.75, NULL, now()::TIMESTAMP), (?, ?, 'book', 'Example Book', 2.15, NULL, now()::TIMESTAMP)",
         [bout_id, fighter_a, bout_id, fighter_b],
     )
+    for day, price_a, price_b in (("2026-11-01", 1.9, 1.95), ("2026-11-02", 1.75, 2.15)):
+        con.execute(
+            """INSERT INTO upcoming_odds_history VALUES
+               (?, ?, 'book', 'Example Book', ?, NULL, ?::TIMESTAMP),
+               (?, ?, 'book', 'Example Book', ?, NULL, ?::TIMESTAMP)""",
+            [bout_id, fighter_a, price_a, day, bout_id, fighter_b, price_b, day],
+        )
     con.close()
     monkeypatch.setenv("DB_PATH", str(path))
     get_settings.cache_clear()
@@ -252,6 +259,8 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert len(tables) == 1
         assert len(tables[0]) == 1
         assert {"1.75", "2.15"}.issubset(set(tables[0].iloc[0].astype(str)))
+        assert any(m.value == "**Betting line movement**" for m in at.markdown)
+        assert len(at.get("vega_lite_chart")) == 1
     finally:
         get_settings.cache_clear()
 

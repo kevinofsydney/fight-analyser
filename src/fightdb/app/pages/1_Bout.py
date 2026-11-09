@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import logging
 import math
 
+import altair as alt
 import duckdb
 import pandas as pd
 import streamlit as st
@@ -364,6 +365,58 @@ else:
         st.caption(
             f"The Odds API · Australian bookmakers · last fetched {components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC. Odds may have changed since the last daily refresh."
         )
+has_history_table = not data.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
+    ["upcoming_odds_history"],
+).empty
+history = (
+    data.query(
+        """SELECT fighter_id, fetched_at, median(decimal_odds) AS median_odds,
+                  min(decimal_odds) AS low, max(decimal_odds) AS high,
+                  count(*) AS books
+           FROM upcoming_odds_history WHERE bout_id = ?
+           GROUP BY fighter_id, fetched_at ORDER BY fetched_at""",
+        [bout_id],
+    )
+    if has_history_table
+    else pd.DataFrame()
+)
+if not history.empty:
+    st.markdown("**Betting line movement**")
+    order = [str(a.fighter_name), str(b.fighter_name)]
+    history["Fighter"] = history["fighter_id"].map({a.fighter_id: order[0], b.fighter_id: order[1]})
+    history["implied"] = 1 / history["median_odds"]
+    color = alt.Color(
+        "Fighter:N",
+        scale=alt.Scale(domain=order, range=["#3987e5", "#d95926"]),
+        legend=alt.Legend(orient="top", title=None, symbolType="circle", symbolOpacity=1),
+    )
+    x = alt.X(
+        "fetched_at:T", title="Price fetched (UTC)", axis=alt.Axis(format="%-d %b", tickCount="day")
+    )
+    tooltip = [
+        alt.Tooltip("Fighter:N"),
+        alt.Tooltip("fetched_at:T", title="Fetched", format="%-d %b %Y %H:%M"),
+        alt.Tooltip("median_odds:Q", title="Median odds", format=".2f"),
+        alt.Tooltip("low:Q", title="Lowest", format=".2f"),
+        alt.Tooltip("high:Q", title="Highest", format=".2f"),
+        alt.Tooltip("implied:Q", title="Implied chance", format=".0%"),
+        alt.Tooltip("books:Q", title="Bookmakers"),
+    ]
+    base = alt.Chart(history).encode(x=x, color=color)
+    band = base.mark_area(opacity=0.18).encode(
+        y=alt.Y("low:Q", title="Decimal odds", scale=alt.Scale(zero=False)), y2="high:Q"
+    )
+    line = base.mark_line(strokeWidth=2).encode(y="median_odds:Q")
+    points = base.mark_point(filled=True, size=70).encode(y="median_odds:Q", tooltip=tooltip)
+    st.altair_chart((band + line + points).properties(height=280), width="stretch")
+    polls = history["fetched_at"].nunique()
+    st.caption(
+        "Median price across bookmakers at each daily fetch; the shaded band spans the lowest "
+        "to highest price. Shorter odds mean the market rates that fighter more likely to win."
+        + (" Movement appears as more daily fetches are recorded." if polls < 2 else "")
+    )
+
 if a.status == "scheduled":
     st.link_button(
         "Refresh odds via GitHub",

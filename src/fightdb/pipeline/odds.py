@@ -1,4 +1,4 @@
-"""Store the most recent safely matched upcoming bookmaker quotes."""
+"""Store safely matched upcoming bookmaker quotes: the latest poll plus every poll's history."""
 
 from datetime import UTC, datetime
 
@@ -14,6 +14,14 @@ def init_table(con: duckdb.DuckDBPyConnection) -> None:
         bookmaker_key VARCHAR NOT NULL, bookmaker VARCHAR NOT NULL,
         decimal_odds DOUBLE NOT NULL, updated_at TIMESTAMP, fetched_at TIMESTAMP NOT NULL,
         PRIMARY KEY (bout_id, fighter_id, bookmaker_key))""")
+    # upcoming_odds keeps only the latest poll; this keeps every poll so line movement can be shown.
+    con.execute("""CREATE TABLE IF NOT EXISTS upcoming_odds_history (
+        bout_id VARCHAR NOT NULL, fighter_id VARCHAR NOT NULL,
+        bookmaker_key VARCHAR NOT NULL, bookmaker VARCHAR NOT NULL,
+        decimal_odds DOUBLE NOT NULL, updated_at TIMESTAMP, fetched_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (bout_id, fighter_id, bookmaker_key, fetched_at))""")
+    con.execute("""INSERT INTO upcoming_odds_history
+        SELECT * FROM upcoming_odds ON CONFLICT DO NOTHING""")
 
 
 def reserve_daily_poll(con: duckdb.DuckDBPyConnection, now: datetime) -> bool:
@@ -97,6 +105,9 @@ def store(con: duckdb.DuckDBPyConnection, events: list[OddsEvent], fetched_at: d
         if rows:
             con.executemany(
                 "INSERT OR REPLACE INTO upcoming_odds VALUES (?, ?, ?, ?, ?, ?, ?)", rows
+            )
+            con.executemany(
+                "INSERT OR REPLACE INTO upcoming_odds_history VALUES (?, ?, ?, ?, ?, ?, ?)", rows
             )
         con.execute("COMMIT")
     except Exception:
