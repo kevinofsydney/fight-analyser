@@ -257,7 +257,7 @@ def test_home_card_selection_opens_selected_bout(db, tmp_path, monkeypatch):
         at.run()
         assert not at.exception, [e.value for e in at.exception]
         assert at.session_state["bout_id"] == bouts[1][0]
-        assert "bout_event_selector" not in at.session_state
-        assert "bout_selector" not in at.session_state
+        assert at.session_state["bout_event_selector"] == event_id
+        assert at.session_state["bout_selector"] == bouts[1][0]
     finally:
         get_settings.cache_clear()
