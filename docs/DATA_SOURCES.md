@@ -7,7 +7,7 @@ Research done 2026-10-29: where Fight Analyser gets its data, and why.
 | Need | Primary source | Fallback | How we pull it |
 |------|----------------|----------|----------------|
 | Completed fights, round-by-round stats, fighter bios, results | **[fight-canon-db](https://github.com/Jadevit/fight-canon-db)** SQLite release (`canon.db`) | **[Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats)** CSVs | Download one file per day; no scraping |
-| Historical betting odds (for calibration, not betting) | fight-canon-db `odds` table | none needed (nice-to-have) | Same file |
+| Historical betting odds (display and calibration) | fight-canon-db `odds` table | none needed (nice-to-have) | Same file |
 | Upcoming fight-winner odds | [The Odds API](https://the-odds-api.com/sports/mma-ufc-odds.html) (optional key; Australian bookmakers) | none | One daily MMA h2h request; exact two-fighter and event-date match |
 | **Upcoming cards** | **ESPN's public JSON** (`site.api.espn.com/.../mma/ufc/scoreboard`) | Wikipedia (MediaWiki API) event pages | One small JSON request per event |
 
@@ -22,8 +22,11 @@ Daily pipeline:
            2. if that fails or is stale > 7 days → Greco1899 CSVs (raw.githubusercontent.com)
            3. fetch ESPN scoreboard for every future event in its calendar → upcoming cards
            4. match ESPN fighters → our fighter IDs (identity table)
-           5. card diff, snapshots, features, matchup projections
+           5. optional: request Australian MMA head-to-head odds once (ODDS_API_KEY)
+           6. card diff, snapshots, features, matchup projections
 ```
+
+The optional odds feed matches both normalized fighter names and event date within one day; ambiguous matches are skipped. Prices and provider timestamps are stored in `upcoming_odds`; an unsuccessful fetch keeps the previous snapshot, while a successful response replaces it. Historical closing ranges come from fight-canon-db, not the upcoming feed. ESPN portrait URLs are generated only for fighters with an unambiguous ESPN ID; current ranking, gym and weigh-in weight are not currently imported.
 
 ## Source evaluations
 

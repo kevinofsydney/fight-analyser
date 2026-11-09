@@ -126,12 +126,13 @@ GitHub repo → **Settings → Actions → General → Workflow permissions** �
 **B2. (Optional) add secrets**
 Repo → **Settings → Secrets and variables → Actions → New repository secret**:
 - `DISCORD_WEBHOOK_URL` (only if you want card-change notifications)
+- `ODDS_API_KEY` (only if you want daily upcoming Australian bookmaker odds)
 
 **B3. Run the first refresh manually**
 Repo → **Actions → "Daily refresh" → Run workflow**. The first run does a full backfill (a couple of minutes). When it finishes, **Releases** should show `data-latest` with `fightdb.duckdb` attached.
 After this, it runs every day on the cron in `.github/workflows/refresh.yml`.
 
-To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions repository secret (Settings → Secrets and variables → Actions). Get a key from [The Odds API](https://the-odds-api.com/). The refresh workflow reads the secret; it is not needed in Streamlit secrets.
+To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions repository secret (Settings → Secrets and variables → Actions). Get a key from [The Odds API](https://the-odds-api.com/). The refresh workflow reads the secret; it is not needed in Streamlit secrets. The key was not configured as of 2026-11-09. Run the refresh manually after adding it, or wait for the next scheduled run.
 
 **B4. Deploy the app**
 1. Go to https://share.streamlit.io and sign in with GitHub.
@@ -151,7 +152,7 @@ To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions reposi
 **B5. Caveats**
 - The app sleeps after a period with no visitors. The first visit wakes it (about 30 s).
 - GitHub disables scheduled workflows in public repos after **60 days with no repo activity**. Build-plan task T9.3 adds a keepalive. You can also just push something occasionally.
-- GitHub cron start times can drift by several minutes under load. That's fine for a daily job.
+- GitHub cron starts have been delayed by several hours. The app downloads the release when its cached DB exceeds `DB_MAX_AGE_HOURS` (12 hours by default), so newly published odds and results may not appear immediately.
 - The data release is **public**, because the repo is public. See DECISIONS.md D15.
 
 ---

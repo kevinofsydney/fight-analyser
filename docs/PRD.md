@@ -1,6 +1,6 @@
 # Fight Analyser: Product Requirements Document
 
-**Status:** Draft v0.1 · **Owner:** @kevinofsydney · **Last updated:** 2026-10-29
+**Status:** v1 with later additions · **Owner:** @kevinofsydney · **Last updated:** 2026-11-09
 
 Related docs: [DATA_SOURCES.md](DATA_SOURCES.md) · [ANALYSIS_IDEAS.md](ANALYSIS_IDEAS.md) · [BUILD_PLAN.md](BUILD_PLAN.md) · [DEPLOYMENT.md](DEPLOYMENT.md) · [DECISIONS.md](DECISIONS.md) · [../AGENTS.md](../AGENTS.md)
 
@@ -27,7 +27,7 @@ Fight Analyser is a personal UFC database and analysis tool. It keeps a complete
 - G7. Public repo with **zero secrets committed**.
 
 ### Non-goals (v1)
-- Betting advice or automated picks. (Historical closing odds *are* imported, but only as a calibration benchmark; see DECISIONS.md D7.)
+- Betting advice or automated betting. Historical closing odds and optional upcoming bookmaker prices are displayed for comparison; see DECISIONS.md D7.
 - Complex ML prediction models beyond the calibrated logistic models in §4.6. (v2 candidate; the v1 data model must not block it.)
 - Multi-user accounts, social features, comments.
 - Promotions other than the UFC.
@@ -57,6 +57,7 @@ We **consume existing, regularly updated datasets** instead of scraping. Full re
 |------|---------|----------|
 | Completed fights, round stats, fighters, odds | [fight-canon-db](https://github.com/Jadevit/fight-canon-db) `canon.db` release (daily) | [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) CSVs (daily) |
 | Upcoming cards | ESPN public JSON scoreboard | Wikipedia (MediaWiki API) |
+| Upcoming fight-winner odds | The Odds API, optional key, Australian bookmakers | None |
 
 - **FR-1 Historical import.** One command (`fightdb backfill`) downloads the history source and imports every completed UFC event, bout, fighter, per-round stat and odds line into our database. It takes minutes, not hours.
 - **FR-2 Upcoming cards.** Ingest every upcoming event in ESPN's calendar and its bouts (fighters, weight class, card order, title-fight flag, scheduled rounds, status).
@@ -111,6 +112,7 @@ We **consume existing, regularly updated datasets** instead of scraping. Full re
   - A warning when n < 30 (configurable), and a reminder about multiple comparisons when the user has run many variants in a session
   - The list of matching bouts (drill-down), so the user can sanity-check
 - **FR-18 Sweep mode.** Optionally vary the threshold (e.g. age gap 0–15 years) and plot success rate with CI bands against the threshold. This is the most useful way to see whether "8 years" is a real cutoff or a cherry-picked one.
+- **FR-18a Historical exploration.** Saved hypotheses show matching historical fighter-sides and a hoverable outcome plot, with a choice of matched or all eligible fights and available horizontal features. A descriptive one-variable logistic fit is labelled separately from the predictive model.
 - **FR-19 Saved hypotheses as files.** Saved hypotheses are YAML files in `hypotheses/` (committed to git). They're versioned, reviewable and work on read-only free hosting. See the schema in §6.3.
 - **FR-20 Applied to upcoming bouts.** For each upcoming bout, evaluate each saved hypothesis's condition using current stats. If it matches, show the hypothesis result next to the bout.
 - **FR-21 Ad-hoc SQL.** A read-only SQL console against the database, with the `bout_sides` view documented inline. Queries run with a row limit and a timeout.
@@ -129,6 +131,8 @@ We **consume existing, regularly updated datasets** instead of scraping. Full re
 | Grappling | Takedowns per 15 min, takedown accuracy, **takedown defence**, submission attempts per 15 min, control time per 15 min |
 | Common opponents | Shared opponents and each fighter's result against them |
 
+- **FR-23a Fighter summary.** Show two fighter cards with ESPN portraits where available, current pro record, odds, age at bout, height and reach. Current ranking, gym and weigh-in weight are unavailable until reliable data sources are added; current records are labelled on historical bouts.
+- **FR-23b Fight wear.** Show recorded UFC strikes and knockdowns absorbed, counts of high-absorption fights and recent exposure. Incomplete historical stats remain unknown. These exposure measures are not a medical diagnosis.
 - **FR-24** For each stat, highlight the fighter with the advantage and show the margin. "Higher is better" or "lower is better" is defined per stat in one config file (for example, SApM: lower is better).
 - **FR-25** Show which saved hypotheses match this bout (FR-20), and the bout's matchup projections (§4.6).
 - **FR-26** Show a "data confidence" badge when a fighter has fewer than 3 UFC fights (rates are noisy).
@@ -146,11 +150,11 @@ Details and formulas: [ANALYSIS_IDEAS.md](ANALYSIS_IDEAS.md) §1–3.
 
 ### 4.7 UI pages (v1)
 
-1. **Upcoming** (home): next events, their bouts, last-refreshed time, recent card changes.
-2. **Bout**: tale of the tape (§4.5).
+1. **Upcoming** (home): next events, their bouts, last-refreshed time, recent card changes; selecting a bout opens its page.
+2. **Bout**: fighter summary cards, Elo, odds, past round stats, tale of the tape and model inputs (§4.5); Reset selects the next upcoming main event.
 3. **Hypothesis Lab**: form builder, results, sweep chart, drill-down, "save as YAML" (downloads or copies the YAML for committing).
-4. **Saved Hypotheses**: every YAML hypothesis with its latest result.
-5. **Fighter**: profile, fight history, stat trends over time.
+4. **Saved Hypotheses**: YAML hypotheses, results, matching historical bouts and interactive outcome plots.
+5. **Fighter**: profile, recorded fight wear, fight history with navigation to bouts, and stat trends over time.
 6. **SQL Console** (power user).
 7. **Status**: recent `scrape_runs`, row counts, data freshness.
 
@@ -334,7 +338,7 @@ v1 is designed to need **no secrets at all**. GitHub release downloads, raw CSVs
 | Variable | Needed for | Where it lives |
 |----------|-----------|----------------|
 | `DISCORD_WEBHOOK_URL` | Card-change notifications (optional) | `.env` / GitHub Actions secret |
-| `ODDS_API_KEY` | v2 odds feature (optional) | `.env` / GitHub Actions secret |
+| `ODDS_API_KEY` | Optional daily upcoming Australian bookmaker odds from The Odds API | `.env` / GitHub Actions secret |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Exposing the homelab instance (optional) | `.env` on the homelab only |
 | `APP_PASSWORD` | Simple shared password on a public deployment (optional) | `.env` / host secret store |
 | `GITHUB_TOKEN` | Publishing the data release from Actions | Provided automatically by Actions; never stored |
@@ -370,8 +374,10 @@ Rules: `.env` and `data/` are gitignored. `.env.example` holds placeholders only
 
 ## 10. Future (v2+)
 
-- Live/upcoming odds and "model vs market" views for upcoming bouts (historical odds are already in v1)
+- Calculated model-versus-market implied probability for upcoming bouts (raw bookmaker prices are already shown when configured)
 - Gradient-boosted prediction models, if they beat the v1 logistic models out of sample
 - Multi-variable hypotheses with controls (logistic regression with covariates)
 - An "insight finder" that scans many features and reports patterns with false-discovery-rate correction
 - Other promotions (PFL, ONE, Bellator archives)
+
+The owner has excluded adding the November 2026 fight-wear and related hypothesis features to predictive models or evaluating them for model improvement; see [AGENTS.md](../AGENTS.md).

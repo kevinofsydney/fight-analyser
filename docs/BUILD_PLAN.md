@@ -6,7 +6,7 @@ Read first: [PRD.md](PRD.md) (what), [../AGENTS.md](../AGENTS.md) (rules), [DECI
 
 ## Build status (2026-11-09)
 
-Phases 0–9 are implemented, using the recommended defaults for every decision. The daily refresh runs on GitHub Actions and publishes the `data-latest` database (8,997 UFC bouts and 71,518 judge round scores as of 2026-11-09). The public app (T8.2) is live at https://fight-analyser.streamlit.app/ behind `APP_PASSWORD`. The project runs on Python 3.14. `make check` passes (146 offline tests, Windows included).
+Phases 0–9 are implemented, using the recommended defaults for every decision. The daily refresh runs on GitHub Actions and publishes the `data-latest` database (8,997 UFC bouts and 71,518 judge round scores as of 2026-11-09). The public app (T8.2) is live at https://fight-analyser.streamlit.app/ behind `APP_PASSWORD`. The project runs on Python 3.14. CI runs lint, formatting, type checking, offline tests, secret scanning and a Docker build.
 
 Where the build differs from the task text below:
 - `bout_sides` is materialised as a table by `pipeline/build.py` (not a SQL view in `views.sql`); `upcoming_bout_sides` and `completed_bout_sides` are views over it.
@@ -18,7 +18,7 @@ Where the build differs from the task text below:
 - Shrinkage prior strengths are estimated walk-forward by calendar year, so no snapshot value depends on later fights (enforced by `test_future_fights_never_change_past_snapshots`).
 - Judge scorecards are imported (`judge_scores`) with a `judge_rounds` view for questions 28–29.
 
-Remaining work (hardening, new hypothesis features, modelling), as handoff-ready tasks, is in [NEXT_TASKS.md](NEXT_TASKS.md).
+Subsequent features, owner instructions and remaining work are tracked in [NEXT_TASKS.md](NEXT_TASKS.md); this original plan is historical. Agents are authorized to merge after required checks pass.
 
 ---
 
