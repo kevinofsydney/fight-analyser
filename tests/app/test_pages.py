@@ -93,8 +93,13 @@ def test_past_bout_shows_elo_and_round_stats(db):
     ]
     assert raw_items and "before the opponent-strength adjustment" in raw_items[0].proto.help
     assert any(m.value == "Durability index" and "knockdowns" in m.proto.help for m in at.markdown)
-    assert sum(c.value == "Current pro record" for c in at.caption) == 2
-    assert sum(c.value == "Age at bout" for c in at.caption) == 2
+    profile = next(
+        df.value
+        for df in at.dataframe
+        if "Stat" in df.value.columns and "Current pro record" in df.value["Stat"].values
+    )
+    assert {"Age at bout", "Height", "Reach"}.issubset(set(profile["Stat"]))
+    assert len(profile.columns) == 3
     assert any("Elo before fight" in m.label for m in at.metric)
     assert any(h.value == "Fight statistics by round" for h in at.subheader)
 
@@ -318,3 +323,30 @@ def test_chart_groups_count_each_bout_once_and_preserve_wins():
     assert groups["count"].sum() == 3
     assert groups["successes"].sum() == 2
     assert ((groups["ci_low"] <= groups["rate"]) & (groups["rate"] <= groups["ci_high"])).all()
+
+
+def test_profile_comparison_highlights_only_known_advantages():
+    import ast
+    import math
+
+    import pandas as pd
+
+    page = APP / "pages" / "1_Bout.py"
+    module = ast.parse(page.read_text(encoding="utf-8"))
+    names = {"num", "highlight_profile_advantage"}
+    functions = [
+        node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in names
+    ]
+    namespace = {
+        "pd": pd,
+        "math": math,
+        "a": pd.Series({"self_age_years": 36, "self_height_cm": 193, "self_reach_cm": None}),
+        "b": pd.Series({"self_age_years": 29, "self_height_cm": 185, "self_reach_cm": 185}),
+    }
+    exec(compile(ast.Module(body=functions, type_ignores=[]), str(page), "exec"), namespace)
+    highlight = namespace["highlight_profile_advantage"]
+    assert highlight(pd.Series({"Stat": "Age at bout", "A": "36", "B": "29"}))[2]
+    assert highlight(pd.Series({"Stat": "Height", "A": "193", "B": "185"}))[1]
+    assert highlight(pd.Series({"Stat": "Reach", "A": "—", "B": "185"})) == ["", "", ""]
+    namespace["a"]["self_height_cm"] = 185
+    assert highlight(pd.Series({"Stat": "Height", "A": "185", "B": "185"})) == ["", "", ""]
