@@ -42,7 +42,7 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | Page | |
 |------|--|
 | **Home** | Upcoming events and bouts with model probabilities, age and reach gaps; select a fight to open its Bout page; card changes in the last 7 days |
-| **Bout** | Fighter portraits and a side-by-side table of current pro records, age at fight, height, reach and odds (with physical advantages highlighted); pre-fight Elo and tale of the tape; past round statistics; model outlook and its inputs (hover over index help icons for calculations); per-round projections, matching hypotheses and common opponents. Reset returns to the next upcoming main event. |
+| **Bout** | Fighter portraits and a side-by-side table of current pro records, age at fight, height, reach, stance and odds (with physical advantages highlighted); pre-fight Elo and tale of the tape; past round statistics; model outlook and its inputs (hover over index help icons for calculations); per-round projections, matching hypotheses and common opponents. Reset returns to the next upcoming main event. |
 | **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save. The From date is an inclusive starting date; results include later available fights. |
 | **Saved Hypotheses** | Open a saved hypothesis to explore historical outcome plots and matching fights, select a fight for its Bout page, and see upcoming matches. |
 | **Fighter** | Profile, recorded fight wear and per-fight strikes absorbed; select a historical bout to open it; trends as of each fight. |

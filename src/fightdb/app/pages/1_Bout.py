@@ -172,6 +172,9 @@ for col, side in zip(profile_cols, (a, b), strict=True):
             "—",
             components.fmt_stat("height_cm", num(side.self_height_cm)),
             components.fmt_stat("reach_cm", num(side.self_reach_cm)),
+            str(side.self_stance).strip()
+            if pd.notna(side.self_stance) and str(side.self_stance).strip()
+            else "—",
             "—",
         ]
     )
@@ -186,6 +189,7 @@ profile_table = pd.DataFrame(
             "Weigh-in weight",
             "Height",
             "Reach",
+            "Stance",
             "Gym",
         ],
         str(a.fighter_name): profiles[0],
