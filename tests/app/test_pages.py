@@ -155,3 +155,75 @@ def test_saved_hypothesis_shows_matching_fights(db):
     assert any("logistic fit" in c.value for c in at.caption)
     assert any("Previous matching fights" in m.value for m in at.markdown)
     assert any("Matching fighter" in df.value.columns for df in at.dataframe)
+
+
+def test_closing_odds_formatting():
+    from fightdb.app.components import format_closing_range
+
+    assert format_closing_range(-200, 150) == "1.50 to 2.50 decimal (-200 to +150 American)"
+    assert format_closing_range(120, 120) == "2.20 decimal (+120 American)"
+    assert format_closing_range(None, None) == "—"
+
+
+def test_bout_shows_historical_closing_prices(db, tmp_path, monkeypatch):
+    import shutil
+
+    import duckdb
+
+    path = tmp_path / "closing.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    bout_id, fighter_a, fighter_b = con.execute(
+        "SELECT bout_id, fighter_a_id, fighter_b_id FROM bouts WHERE status = 'completed' LIMIT 1"
+    ).fetchone()
+    con.execute(
+        "INSERT INTO odds (bout_id, fighter_id, close_low, close_high) VALUES (?, ?, ?, ?), (?, ?, ?, ?)",
+        [bout_id, fighter_a, -200, -150, bout_id, fighter_b, 120, 150],
+    )
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "pages" / "1_Bout.py"), default_timeout=120)
+        at.session_state["bout_id"] = bout_id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("-200 to -150" in metric.value for metric in at.metric)
+        assert any("+120 to +150" in metric.value for metric in at.metric)
+    finally:
+        get_settings.cache_clear()
+
+
+def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
+    import shutil
+
+    import duckdb
+
+    from fightdb.pipeline.odds import init_table
+
+    path = tmp_path / "upcoming-odds.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id, bout_id, fighter_a, fighter_b = con.execute(
+        "SELECT event_id, bout_id, fighter_a_id, fighter_b_id FROM bouts LIMIT 1"
+    ).fetchone()
+    con.execute("UPDATE events SET status='upcoming' WHERE event_id = ?", [event_id])
+    con.execute("UPDATE bout_sides SET status='scheduled' WHERE bout_id = ?", [bout_id])
+    init_table(con)
+    con.execute(
+        "INSERT INTO upcoming_odds VALUES (?, ?, 'book', 'Example Book', 1.75, NULL, now()::TIMESTAMP), (?, ?, 'book', 'Example Book', 2.15, NULL, now()::TIMESTAMP)",
+        [bout_id, fighter_a, bout_id, fighter_b],
+    )
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "pages" / "1_Bout.py"), default_timeout=120)
+        at.session_state["bout_id"] = bout_id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        tables = [df.value for df in at.dataframe if "Bookmaker" in df.value.columns]
+        assert len(tables) == 1
+        assert set(tables[0]["Decimal odds"]) == {"1.75", "2.15"}
+    finally:
+        get_settings.cache_clear()

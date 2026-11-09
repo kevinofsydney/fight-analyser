@@ -22,8 +22,8 @@ import httpx
 from fightdb import errorlog, notify
 from fightdb.config import Settings
 from fightdb.db.conn import init_db
-from fightdb.pipeline import backfill, build, quality, upcoming
-from fightdb.sources import espn, http, wikipedia
+from fightdb.pipeline import backfill, build, odds, quality, upcoming
+from fightdb.sources import espn, http, odds_api, wikipedia
 from fightdb.sources.models import UpcomingEvent
 
 log = logging.getLogger(__name__)
@@ -101,6 +101,16 @@ def run_refresh(
                         report["warnings"].append(f"ESPN upcoming cards failed: {exc}")
                         _wikipedia_fallback(
                             con, client, today, settings, run_id, report, check_wikipedia
+                        )
+                odds.init_table(con)
+                if cards and settings.odds_api_key:
+                    try:
+                        quotes = odds_api.parse(http.upcoming_odds(client, settings.odds_api_key))
+                        report["counts"]["upcoming_odds"] = odds.store(con, quotes, _now())
+                    except Exception as exc:  # noqa: BLE001 - odds failures must not stop refresh
+                        log.warning("Upcoming odds could not be refreshed (%s)", type(exc).__name__)
+                        report["warnings"].append(
+                            "Upcoming odds refresh failed; previous quotes retained"
                         )
                 if not _completed_bouts(con):
                     raise RuntimeError("database has no completed bouts; run a backfill first")

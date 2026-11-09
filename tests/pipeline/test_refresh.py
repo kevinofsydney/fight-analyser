@@ -241,3 +241,67 @@ def test_espn_back_adopts_fallback_event(settings):
         ).fetchone() == (0,)
     finally:
         con.close()
+
+
+def test_optional_upcoming_odds_refresh_and_failure_retains_last_prices(settings, monkeypatch):
+    from datetime import datetime
+
+    import fightdb.pipeline.refresh as refresh
+
+    settings.odds_api_key = "dummy-test-key"
+    monkeypatch.setattr(refresh, "_now", lambda: datetime(2026, 10, 29, 12))
+    payload = [
+        {
+            "id": "x",
+            "commence_time": "2026-11-15T01:00:00Z",
+            "home_team": "Ciryl Gane",
+            "away_team": "Josh Hokit",
+            "bookmakers": [
+                {
+                    "key": "book",
+                    "title": "Example",
+                    "last_update": "2026-10-29T11:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Ciryl Gane", "price": 1.7},
+                                {"name": "Josh Hokit", "price": 2.2},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=payload if len(calls) == 1 else {"invalid": "shape"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        first = run_refresh(
+            settings,
+            file=FIXTURES / "canon_mini.db",
+            client=client,
+            fetch_upcoming=_upcoming(),
+            today=TODAY,
+            train_models=False,
+        )
+        assert first["counts"]["upcoming_odds"] == 2
+        second = run_refresh(
+            settings,
+            file=FIXTURES / "canon_mini.db",
+            client=client,
+            fetch_upcoming=_upcoming(),
+            today=TODAY,
+            train_models=False,
+        )
+    assert len(calls) == 2
+    assert "Upcoming odds refresh failed; previous quotes retained" in second["warnings"]
+    con = duckdb.connect(str(settings.db_path), read_only=True)
+    try:
+        assert con.execute("SELECT count(*) FROM upcoming_odds").fetchone()[0] == 2
+    finally:
+        con.close()

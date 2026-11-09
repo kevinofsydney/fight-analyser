@@ -116,6 +116,27 @@ def fmt_diff_cm(cm: float) -> str:
     return f"{cm:+.1f} cm / {cm / CM_PER_IN:+.1f} in"
 
 
+def format_american_odds(value: Any) -> str:
+    if value is None or pd.isna(value) or value == 0:
+        return "—"
+    return f"{int(value):+d}"
+
+
+def decimal_odds_from_american(value: Any) -> float | None:
+    if value is None or pd.isna(value) or value == 0:
+        return None
+    return 1 + (value / 100 if value > 0 else 100 / abs(value))
+
+
+def format_closing_range(low: Any, high: Any) -> str:
+    values = sorted({int(x) for x in (low, high) if x is not None and not pd.isna(x) and x != 0})
+    if not values:
+        return "—"
+    american = " to ".join(format_american_odds(value) for value in values)
+    decimal = " to ".join(f"{decimal_odds_from_american(value):.2f}" for value in values)
+    return f"{decimal} decimal ({american} American)"
+
+
 def level_vs_baseline(p: float, base: float) -> str:
     """'low / medium / high' relative to the division baseline (DECISIONS.md D26)."""
     if p is None or base is None or base <= 0 or math.isnan(p) or math.isnan(base):

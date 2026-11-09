@@ -41,6 +41,7 @@ jobs:
       - name: Refresh (backfill on the first run)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
           if [ -f "$DB_PATH" ]; then uv run fightdb -v refresh; else uv run fightdb -v backfill; fi
 
