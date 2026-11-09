@@ -3,7 +3,8 @@
 A UFC fight database and analysis tool:
 
 - **Hypothesis Lab:** test ideas like *"in men's lightweight, when one fighter is 8+ years older, how often do they win?"* and get sample sizes, 95% confidence intervals, p-values and a threshold sweep, not just a percentage.
-- **Tale of the tape:** for every upcoming bout, see who has the better takedown defence, the longer reach (and by how much), and 40+ other point-in-time stats with the edge highlighted.
+- **Bout comparison:** open an upcoming or past fight for side-by-side fighter cards, Elo, odds, round statistics, and point-in-time tale-of-the-tape comparisons.
+- **Explore fight history:** inspect matching bouts and interactive outcome plots for saved hypotheses, including age, reach, layoff and accumulated fight exposure.
 - **xG-style projections:** expected takedowns, strikes, control time and knockdowns per round; win and method-of-victory probabilities from a calibrated model.
 - **Daily refresh:** new results and upcoming cards re-sync once a day, and card changes (cancellations, replacements, moved bouts) are logged.
 
@@ -40,17 +41,19 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 
 | Page | |
 |------|--|
-| **Home** | Upcoming events and bouts with model odds, age and reach gaps; card changes in the last 7 days |
-| **Bout** | Fighter portraits where available, current pro records and fight details; tale of the tape, model outlook (win / KO / sub / decision vs division average; "low / medium / high" labels for each method whose probabilities pass the calibration check), per-round projections with "show the maths", matching saved hypotheses, common opponents |
-| **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save |
-| **Saved Hypotheses** | Every YAML in `hypotheses/`, its latest result and which upcoming bouts it applies to |
-| **Fighter** | Profile, UFC history, stat trends as of each fight |
+| **Home** | Upcoming events and bouts with model probabilities, age and reach gaps; select a fight to open its Bout page; card changes in the last 7 days |
+| **Bout** | Fighter cards with ESPN portraits where available, current pro records, age at fight, height, reach and odds; pre-fight Elo and tale of the tape; past round statistics; model outlook and its inputs; per-round projections, matching hypotheses and common opponents. Reset returns to the next upcoming main event. |
+| **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save. The From date is an inclusive starting date; results include later available fights. |
+| **Saved Hypotheses** | Open a saved hypothesis to explore historical outcome plots and matching fights, select a fight for its Bout page, and see upcoming matches. |
+| **Fighter** | Profile, recorded fight wear and per-fight strikes absorbed; select a historical bout to open it; trends as of each fight. |
 | **SQL** | Read-only console (no file or network access) over the DuckDB database, including `judge_rounds` (every judge's round score next to that round's stats) |
 | **Status** | Refresh runs (including data-quality failures and Wikipedia fallback days), unmatched fighters, model calibration vs the closing betting line |
 
-The Fighter page includes a fight-wear profile based on recorded UFC round statistics. It counts significant strikes and knockdowns absorbed and fights with 50+, 75+, or 100+ significant strikes absorbed. Incomplete round statistics make totals unavailable; these numbers describe recorded exposure, not a medical diagnosis. The Hypothesis Lab and saved examples can explore these measures, prior KO/TKO losses, five-round wars, division moves, and stance matchups. Division direction is unknown for debutants and catchweights. Historical stance uses the currently recorded stance and may not reflect changes over time.
+Bout cards use ESPN portrait URLs derived from unambiguous ESPN fighter IDs; when an ID or portrait is unavailable, an initials placeholder is shown. Current rankings, gyms and weigh-in weights are not currently supplied. The Fighter page includes a fight-wear profile based on recorded UFC round statistics. It counts significant strikes and knockdowns absorbed and fights with 50+, 75+, or 100+ significant strikes absorbed. Incomplete round statistics make totals unavailable; these numbers describe recorded exposure, not a medical diagnosis. The Hypothesis Lab and saved examples can explore these measures, prior KO/TKO losses, five-round wars, division moves, and stance matchups. Division direction is unknown for debutants and catchweights. Historical stance uses the currently recorded stance and may not reflect changes over time.
 
-Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypotheses/examples/).
+Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypotheses/examples/). Open one on **Saved Hypotheses** to see up to 100 matching fighter-sides per page, including the condition values, result and method; selecting a row opens the fight. A single bout can appear twice if both fighters meet the condition.
+
+The **Explore historical outcomes** plot lets you select height, reach or age difference, layoff, or another available feature. Choose **Matching fights** to plot the hypothesis subset or **All eligible fights** to apply the population filters without the hypothesis condition. Each dot is an observed yes/no outcome for a fighter-side, slightly spread vertically so dots are easier to inspect. Hover for the event, fighters, result, method and feature value. The red one-variable logistic curve is a descriptive fit to that subset: it is not the upcoming-fight prediction model or evidence of causation. Both sides of a bout may be plotted. When the feature or outcome does not vary, no curve is shown.
 
 ### Your first hypothesis in 60 seconds
 
@@ -62,15 +65,15 @@ Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypoth
 6. Look at the **sweep** chart (on by default; it varies the first condition's threshold). If the line wobbles around 50% with wide bands, "8 years" was a cherry-picked cutoff.
 7. Like it? Copy the YAML into `hypotheses/` and commit it. It then shows up on every upcoming bout it applies to.
 
-Every number is point-in-time: a 2015 bout only sees fights before it. Each hypothesis you run in a session counts toward a multiple-comparisons reminder.
+Historical fight-based features and model inputs use only bouts before the fight being analysed. Some biography fields, including stance, come from the current source record and may not reflect how they were recorded historically. The Bout card separately labels the **current** pro record, including on historical bouts. Each hypothesis you run in a session counts toward a multiple-comparisons reminder.
 
 ## Fight odds
 
-The Bout page shows historical closing price ranges where fight-canon-db has them. To show upcoming Australian bookmaker prices, obtain an API key from [The Odds API](https://the-odds-api.com/) and set `ODDS_API_KEY` in your local `.env` or as a GitHub Actions repository secret. The daily refresh makes one request for Australian head-to-head odds, matches both fighters and event date, and records when the quotes were fetched. Without a key, upcoming odds are unavailable and the rest of the app continues to work. Prices can change between refreshes.
+The Bout page shows historical closing price ranges where fight-canon-db has them. To show upcoming Australian bookmaker prices, obtain an API key from [The Odds API](https://the-odds-api.com/) and set `ODDS_API_KEY` in your local `.env` or as a GitHub Actions repository secret. The daily refresh makes one request for Australian head-to-head odds, matches both fighters and event date, and records when the quotes were fetched. Without a key, upcoming odds are unavailable and the rest of the app continues to work. The last successfully retrieved quotes are retained if an odds request fails, with their timestamps; successful responses replace the previous snapshot. Prices can change between refreshes. Historical closing ranges use fight-canon-db data and need no key. Odds are for comparison, not betting advice.
 
 ## Hosting
 
-Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). GitHub starts scheduled workflows late: the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC, so on the free path cards can be up to about 8 hours older than the cron suggests. The homelab cron runs on time. Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`) go in `.env` or the host's secret store.
+Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). GitHub starts scheduled workflows late: the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC, so on the free path cards can be up to about 8 hours older than the cron suggests. The homelab cron runs on time. Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed for core data; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`, `ODDS_API_KEY`) go in `.env` or the host's secret store.
 
 ## Docs
 - [PRD](docs/PRD.md): what we're building and why
@@ -88,6 +91,7 @@ Code: [MIT](LICENSE). The license covers this repository's code, not the upstrea
 - [fight-canon-db](https://github.com/Jadevit/fight-canon-db) (MIT): fight history, round stats, odds
 - [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) (GPL-3.0 code; we use its data files): fallback history
 - ESPN's public scoreboard feed: upcoming cards and fighter portrait IDs
+- [The Odds API](https://the-odds-api.com/): optional upcoming Australian bookmaker odds
 - [Wikipedia](https://en.wikipedia.org/wiki/List_of_UFC_events) (CC BY-SA), via the MediaWiki API: upcoming cards when ESPN is down
 - Judges' scorecards via fight-canon-db (from mmadecisions.com and ufc.com)
 

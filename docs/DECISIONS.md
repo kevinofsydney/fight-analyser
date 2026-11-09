@@ -4,7 +4,7 @@ Choices for the owner (@kevinofsydney) to make. Each has a **recommended default
 
 **Status key:** ⬜ open · ✅ decided
 
-> **Decided 2026-11-09:** the owner accepted the recommended option for every decision below (the build already implemented them). Changing one now means changing code; the "Affects" column shows where.
+> **Decided 2026-11-09:** the owner accepted the recommended options during the original build. Later owner requests supersede D7, D21 and D22 as recorded below; changes may require code updates.
 
 ## Blocking: decide before Phase 0/1
 
@@ -21,7 +21,7 @@ Choices for the owner (@kevinofsydney) to make. Each has a **recommended default
 | # | Decision | Options | Recommended | Affects | Decision |
 |---|----------|---------|-------------|---------|----------|
 | D6 | **Historical range** | (a) All UFC history (1993→) (b) Since 2005 (c) Since 2010 | **Ingest all** (a), but **default hypothesis filters to `date_from: 2010-01-01`**. Early UFC had no weight classes or modern rules, and its stats are sparse. | T3.2, T5.2 defaults | ✅ Recommended (as built) |
-| D7 | **Betting odds** | (a) Ignore (b) Import historical closing lines from fight-canon-db as a **calibration benchmark** only (c) Also show upcoming lines and "model vs market" | **(b)**. It's free, already in the file, and it's the honest yardstick for our models. (c) is a v2 question and may need a keyed API. | T2.2, T5.6 | ✅ Recommended (as built) |
+| D7 | **Betting odds** | (a) Ignore (b) Import historical closing lines from fight-canon-db as a **calibration benchmark** only (c) Also show upcoming lines and "model vs market" | **(b)**. It's free, already in the file, and it's the honest yardstick for our models. (c) is a v2 question and may need a keyed API. | T2.2, T5.6 | ✅ Historical closing odds plus optional upcoming prices from The Odds API; the key is not yet configured. No automated betting. |
 | D8 | **Women's divisions** | (a) Include (b) Men's only | **(a) Include**. It costs nothing, and `sex` is a filter. | T1.2 | ✅ Recommended (as built) |
 | D9 | **Default exclusions in hypotheses** | Which outcomes to drop by default: draws, no contests, DQs, overturned results | **Exclude draws, NCs and DQs** by default (each overridable per hypothesis) | T5.2 | ✅ Recommended (as built) |
 | D10 | **How to phrase "X% higher chance"** | (a) Absolute percentage points (41% vs 50% = −9 pp) (b) Relative (41/50 − 1 = −18%) (c) Show both | **(c) Show both, clearly labelled.** Your example "20% higher chance" is ambiguous: 50%→60% is +10 pp but +20% relative. | T5.1, T5.2, T6.4 | ✅ Recommended (as built) |
@@ -54,9 +54,9 @@ Choices for the owner (@kevinofsydney) to make. Each has a **recommended default
 
 | # | Decision | Options | Recommended | Decision |
 |---|----------|---------|-------------|----------|
-| D21 | **Branch / merge policy** | (a) Every task = branch + PR, CI must pass, you merge (b) Agents push to main | **(a)**. Turn on branch protection for `main` (require CI to pass) in GitHub settings. | ✅ (a); branch protection on `main` requires CI |
-| D22 | **Who reviews contract and 🔴 tasks** | You, or a second agent cross-reviewing (e.g. Codex reviews Claude's PR) | **Cross-agent review, then you approve**, for T1.*, T4.1 and T5.2 | ✅ Recommended (as built) |
-| D23 | **Task routing** | Which agent gets which tasks | 🔴 tasks to your strongest agent; 🟢 adapter/page tasks spread across the others. Track assignments in GitHub Issues (one issue per task ID). | ✅ Recommended (as built) |
+| D21 | **Branch / merge policy** | Task branch and PR; CI required | Agents merge after required checks pass. | ✅ Owner authorizes agents to merge automatically; no owner code review. Branch protection requires CI. |
+| D22 | **Review of contract and 🔴 tasks** | Owner review, agent review, or automated checks | Apply the required tests and careful verification. | ✅ Owner will not review code; agents complete required checks and merge. Cross-agent delegation only when explicitly requested. |
+| D23 | **Task routing** | How to assign tasks | Use task ownership and tests; route difficult work carefully. | ✅ Delegate to other agents only when explicitly requested; track assignments as appropriate. |
 
 ---
 
@@ -66,3 +66,5 @@ Choices for the owner (@kevinofsydney) to make. Each has a **recommended default
 - Does ESPN pick up late replacements quickly enough? If not, add a Wikipedia or UFC.com card check (DATA_SOURCES.md).
 - Is fight-canon-db still updating reliably after a couple of months? (It's young. The failover to Greco covers us, but it's worth watching.)
 - Do you want past bouts to show *what the tale of the tape looked like before the fight* (point-in-time) or current career numbers? (The PRD assumes point-in-time for past bouts.)
+
+**Later owner instruction:** do not add the November 2026 fight-wear and related hypothesis features to prediction models or evaluate them for model improvement unless the owner changes this instruction; see [AGENTS.md](../AGENTS.md). Descriptive hypothesis plots remain in scope.

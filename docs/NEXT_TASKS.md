@@ -8,7 +8,10 @@ Updated 2026-11-09. This is the handoff file: read it after [AGENTS.md](../AGENT
 - **Python 3.14** (`.python-version`, `requires-python >=3.14`, Docker `python:3.14-slim`). The code uses 3.14-only syntax (PEP 758 `except A, B:`), so it won't run on 3.12 or 3.13.
 - **Live app:** https://fight-analyser.streamlit.app/ (Streamlit Community Cloud, deployed from `main`, `src/fightdb/app/Home.py`). The password gate (`APP_PASSWORD`) shows on Home, SQL and Status, and nothing loads before the password is entered.
 - **Data:** the GitHub Actions "Daily refresh" builds `fightdb.duckdb` and publishes it to the `data-latest` release, and the app downloads it via `DATA_RELEASE_URL`. The DB holds about 9,000 UFC bouts and 71,518 judge round scores.
-- **Quality:** `make check` passes, with 146 offline tests and CI green on `main`. Branch protection is on for `main`.
+- **Quality:** CI on `main` runs lint, formatting checks, type checking, offline tests, secret scanning and a Docker build. Branch protection is on for `main`.
+- **Owner workflow:** agents may merge their changes after required checks pass; the owner will not review code.
+- **Upcoming odds:** The Odds API integration is implemented, but `ODDS_API_KEY` has not been configured in GitHub Actions. Until it is, upcoming odds will not populate; historical closing odds need no key.
+- **Fight wear:** recorded prior UFC strikes and knockdowns absorbed, high-absorption fight counts, recent exposure, last KO loss and five-round-war features are implemented. Incomplete round-stat histories remain unknown. Per the owner, do not add these and related November 2026 hypothesis features to prediction models or evaluate them for model improvement.
 - **Licence:** MIT.
 
 **Windows without `make`:** run `make check` as:
@@ -24,7 +27,7 @@ Run the app locally with `uv run streamlit run src/fightdb/app/Home.py` (http://
 ## Owner checks (human only, about 5 minutes)
 
 1. **Sign in to the live app** and open **Status**. The last refresh run should be `ok` and recent (within about 36 h), and the table sizes should be non-zero. If the page shows a `SyntaxError`, the Streamlit app was created with an older Python. Streamlit can't change the Python version of an existing app, so delete the app and redeploy it with Python 3.14 (DEPLOYMENT.md §B4).
-2. **Keep the secrets out of git.** `APP_PASSWORD` and `DATA_RELEASE_URL` live only in Streamlit → app → Settings → Secrets.
+2. **Keep secrets out of git.** `APP_PASSWORD` and `DATA_RELEASE_URL` live in Streamlit → app → Settings → Secrets. For optional upcoming odds, add `ODDS_API_KEY` to GitHub Actions repository secrets; do not paste it into chat or commit it.
 
 ---
 
@@ -48,10 +51,9 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 
 | ID | Question | What to add | |
 |----|----------|-------------|--|
-| F1 | 17, 29: home-country advantage | Fighter nationality isn't imported. Check whether fight-canon-db has it (`fighters` table); if so, import it as `fighters.country`, parse the country from `events.location`, and add `self_is_home`. If the source lacks it, write that up in DATA_SOURCES.md and stop. | 🟡 |
+| F1 | 17, 29: home-country advantage | `fighters.nationality` exists; assess source coverage and historical provenance, parse event country, and add `self_is_home` only where the comparison is reliable. | 🟡 |
 | F2 | 18: altitude | Add `events.altitude_m` from a small committed lookup of venue cities (Mexico City, Denver, Salt Lake City and others above 1,500 m) in `data/overrides/altitude.yaml`, plus a `high_altitude` flag on `bout_sides`. | 🟢 |
-| F3 | 12: accumulated damage | `self_career_sig_absorbed` and `self_career_kd_absorbed` (sums over prior fights). | 🟢 |
-| F4 | 11, 13: after a KO loss | `self_last_result_ko_loss` (previous fight was a KO/TKO loss) and `self_ko_losses_last_3`. | 🟢 |
+| F4 | 11, 13: after a KO loss | The previous-fight KO/TKO loss flag and quick-turnaround hypothesis exist as `self_last_ko_loss`; the count of KO losses over the last three fights remains to be added. | 🟢 |
 | F5 | 22: who fades | `self_fade_ratio` = last-round vs first-round sig strikes per minute over prior fights, shrunk like the other rates. | 🟡 |
 | F6 | 21, 23, 24: in-fight dynamics | These condition on what happens *during* the bout (won round 1, early takedown, more control time), so they aren't pre-fight features. Add a `bout_round_sides` view (one row per bout, fighter and round, with round winner on strikes and judges' round score where available), and a SQL-page example for each question. Don't add these to the hypothesis feature list, because they'd leak the result. | 🟡 |
 | F7 | 6: wrestler vs striker | `self_style` ∈ {wrestler, striker, balanced}, from point-in-time `idx_wrest_off` vs `idx_str_off` (document the thresholds in ANALYSIS_IDEAS.md). Categorical, so the hypothesis condition builder needs an `in` operator if it doesn't have one. | 🟡 |
@@ -61,13 +63,13 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 | ID | Task | |
 |----|------|--|
 | M1 | **Decision-label watch.** In the method model, big favourites winning on points are under-predicted (0.5–0.6 bin: 53% predicted, 64% observed, n=47). Once that bin has 100+ fighters in the last three test years and is still off by more than 5 pp, the gate hides only the decision label. Try adding `self_p_win` as a feature to the method model and compare walk-forward log loss; keep it only if log loss improves and every method stays calibrated. | 🔴 |
-| M2 | **Market comparison for upcoming bouts** (PRD §10, v2). Live odds need `ODDS_API_KEY` (already documented in PRD §7). Show model vs implied probability on the Bout page, labelled "not betting advice". Needs an owner decision on the odds provider first. | 🔴 |
+| M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented; `ODDS_API_KEY` setup is pending. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
 | M3 | **Multi-variable hypotheses** (PRD §10): logistic regression with covariates, so "older by 8+ years" can be tested controlling for Elo gap. Add an optional `controls:` list to the hypothesis YAML schema (a contract change in `analytics/schema.py`); report the adjusted odds ratio and CI. | 🔴 |
 | M4 | **Insight finder** (PRD §10): scan every numeric feature × outcome, report effects with Benjamini–Hochberg FDR correction. CLI first (`fightdb hypothesis scan`), page later. | 🔴 |
 
 ### Out of scope unless the owner asks
 
-Other promotions (PFL, ONE), gradient-boosted models, live fight-night updates, user accounts (PRD §2 non-goals).
+Other promotions (PFL, ONE), gradient-boosted models, live fight-night updates, user accounts (PRD §2 non-goals). Do not add the November 2026 fight-wear and related hypothesis features to prediction models or evaluate them for model improvement unless the owner changes this instruction (AGENTS.md).
 
 ---
 
@@ -75,7 +77,7 @@ Other promotions (PFL, ONE), gradient-boosted models, live fight-night updates, 
 
 - **Desktop-app sandbox (Windows):** `uv python install` can fail with "Missing expected target directory for Python minor version link", because the packaged app redirects `AppData\Roaming`. Point uv at the downloaded interpreter: `UV_PYTHON=C:/Users/<you>/AppData/Roaming/uv/python/cpython-3.14.6-windows-x86_64-none/python.exe uv sync`. A normal terminal isn't affected.
 - **A running local app locks `.venv`:** stop Streamlit before `uv sync`.
-- **Five upcoming debutants are unmatched**, which is expected (Status page). Add a line to `data/overrides/fighter_identity.yaml` only for a fighter with UFC history.
+- **Some upcoming debutants are unmatched**, which is expected (Status page). Add a line to `data/overrides/fighter_identity.yaml` only for a fighter with UFC history.
 - **GitHub cron starts late:** the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC.
 
 ---
@@ -101,3 +103,16 @@ Other promotions (PFL, ONE), gradient-boosted models, live fight-night updates, 
 | R1 | A failing saved hypothesis is reported and skipped instead of breaking `run-all`, the Saved Hypotheses page or the Bout page (PR #3). |
 | P1 | Python 3.12 → 3.14 (PR #4). |
 | D1 | Public app deployed to Streamlit Community Cloud with `APP_PASSWORD` set. |
+
+## Later changes on 2026-11-09
+
+| PR | What changed |
+|----|--------------|
+| #6 | Human-readable dates, Fighter history navigation, per-round fight statistics and pre-fight Elo on Bout. |
+| #7 | Fight-wear features and profile, division move direction and stance flags, and saved age, size, debut and fight-wear hypotheses. |
+| #8 | Hypothesis start-date picker through today, Bout reset and model-input explanation. |
+| #9 | Paginated matching historical fighter-sides in Saved Hypotheses, with links to bouts. |
+| #10 | Hoverable outcome plots and descriptive one-variable logistic fits for saved hypotheses; matching or all eligible population. |
+| #11 | Historical closing odds display and optional daily Australian bookmaker quotes from The Odds API. |
+| #12 | Selecting a Home card row opens the corresponding Bout page. |
+| #13 | Side-by-side Bout cards with ESPN portraits when available, current records, odds and physical details. Rank, weigh-in weight and gym remain unavailable. |
