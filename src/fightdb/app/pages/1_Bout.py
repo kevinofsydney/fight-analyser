@@ -15,10 +15,12 @@ import streamlit as st
 from fightdb.analytics import hypothesis, schema
 from fightdb.app import components, data
 from fightdb.config import get_settings
-from fightdb.features.stat_meta import STATS
+from fightdb.features.stat_meta import BY_KEY, STATS
+from fightdb.models import outcome
 
-components.page("Tale of the tape")
-st.title("Tale of the tape")
+components.page("Bout")
+st.title("Bout")
+reset_requested = st.button("Reset", help="Return to the next upcoming event and its main event")
 
 events = data.query(
     """(SELECT event_id, name, date, status FROM events WHERE status = 'upcoming')
@@ -26,6 +28,12 @@ events = data.query(
        (SELECT event_id, name, date, status FROM events WHERE status = 'completed' ORDER BY date DESC LIMIT 30)
        ORDER BY status DESC, date"""
 )
+if reset_requested:
+    if (events["status"] == "upcoming").any():
+        for key in ("bout_id", "bout_event_selector", "bout_selector"):
+            st.session_state.pop(key, None)
+    else:
+        st.info("No upcoming event is available yet.")
 preset = st.session_state.get("bout_id")
 preset_event = None
 if preset:
@@ -51,6 +59,7 @@ event_id = c1.selectbox(
     ev_ids,
     format_func=ev_label.get,
     index=ev_ids.index(preset_event) if preset_event in ev_ids else 0,
+    key="bout_event_selector",
 )
 card = data.event_card(event_id)
 if card.empty:
@@ -64,6 +73,7 @@ bout_id = c2.selectbox(
         card.loc[card["bout_id"] == b, ["fighter_name", "opp_name"]].iloc[0]
     ),
     index=b_ids.index(preset) if preset in b_ids else 0,
+    key="bout_selector",
 )
 st.session_state["bout_id"] = bout_id
 
@@ -178,6 +188,85 @@ pd_ = num(a.self_p_distance)
 if not math.isnan(pd_):
     st.caption(
         f"Chance the fight goes the distance: {pd_:.0%} (division average {num(base['dist']):.0%})."
+    )
+
+with st.expander("What goes into the model outlook?"):
+    st.write(
+        "The win model compares the fighters using the pre-fight inputs below. "
+        "Index values are relative to the division average (100); projected numbers are per round. "
+        "These are model inputs, not a breakdown of how much each one changed the probability."
+    )
+    projection_labels = {
+        "x_sig_r": "Projected significant strikes landed / round",
+        "x_td_r": "Projected takedowns / round",
+        "x_kd_r": "Projected knockdowns / round",
+        "x_ctrl_s_r": "Projected control seconds / round",
+    }
+
+    def input_label(key: str) -> str:
+        raw = key.endswith("_raw")
+        name = key.removesuffix("_raw")
+        label = BY_KEY[name].label if name in BY_KEY else projection_labels.get(name, name)
+        return label + (" (before schedule adjustment)" if raw else "")
+
+    def input_value(side: pd.Series, key: str) -> str:
+        value = num(side.get(f"self_{key}"))
+        if math.isnan(value):
+            return "—"
+        if key.endswith("_raw"):
+            return f"{value:.1f}"
+        if key in BY_KEY:
+            return components.fmt_stat(key, value)
+        return f"{value:.2f}"
+
+    win_keys = [key.removeprefix("diff_") for key in outcome.DIFF_FEATURES]
+    st.markdown("**Win probability inputs**")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Input": input_label(key),
+                    a.fighter_name: input_value(a, key),
+                    b.fighter_name: input_value(b, key),
+                }
+                for key in win_keys
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    method_keys = list(
+        dict.fromkeys(
+            [key.removeprefix("diff_") for key in outcome.METHOD_DIFF_FEATURES]
+            + [
+                key.removeprefix("self_")
+                for key in outcome.LEVEL_FEATURES
+                if key.startswith("self_")
+            ]
+        )
+    )
+    st.markdown("**Method-of-victory probability inputs**")
+    st.caption(
+        "The method model also considers the individual levels below. It uses the unadjusted versions of certain indices, as labelled."
+    )
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Input": input_label(key),
+                    a.fighter_name: input_value(a, key),
+                    b.fighter_name: input_value(b, key),
+                }
+                for key in method_keys
+            ]
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    st.caption(
+        "Missing inputs are replaced with zero in the model; a dash means no recorded value. "
+        "Method probabilities are scaled to agree with the win probability. "
+        "The closing betting line and division averages are shown for comparison and are not model inputs."
     )
 
 # --- Matchup projections -------------------------------------------------------------------
