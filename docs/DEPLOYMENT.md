@@ -134,7 +134,7 @@ After this, it runs every day on the cron in `.github/workflows/refresh.yml`.
 **B4. Deploy the app**
 1. Go to https://share.streamlit.io and sign in with GitHub.
 2. **Create app** → pick the repo `kevinofsydney/fight-analyser`, branch `main`, main file `src/fightdb/app/Home.py`.
-3. **Advanced settings → Python version:** 3.12.
+3. **Advanced settings → Python version:** 3.14.
 4. **Advanced settings → Secrets** (TOML format; this is stored by Streamlit, not in git):
    ```toml
    DATA_RELEASE_URL = "https://github.com/kevinofsydney/fight-analyser/releases/download/data-latest/fightdb.duckdb"
@@ -172,7 +172,7 @@ Caveat: free Spaces go to sleep after a stretch of inactivity and wake on visit.
 1. Sign up at https://www.oracle.com/cloud/free/ (needs a card for verification; Always Free resources aren't charged).
 2. Create a VM: **Ampere A1 (ARM)** shape, Ubuntu 24.04, 1–2 OCPU and 6–12 GB RAM is plenty. Add your SSH public key.
 3. In the VM's subnet security list, open nothing extra if you use Tailscale or Cloudflare Tunnel (recommended). Otherwise open TCP 8501.
-4. SSH in and follow **option A** exactly. The Docker image must support `linux/arm64` (python:3.12-slim does; T7.3 should verify with `docker buildx`).
+4. SSH in and follow **option A** exactly. The Docker image must support `linux/arm64` (python:3.14-slim does; T7.3 should verify with `docker buildx`).
 
 ---
 

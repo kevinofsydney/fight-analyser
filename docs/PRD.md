@@ -173,7 +173,7 @@ Details and formulas: [ANALYSIS_IDEAS.md](ANALYSIS_IDEAS.md) §1–3.
 
 | Concern | Choice | Why |
 |---------|--------|-----|
-| Language | Python 3.12 | Best scraping and stats ecosystem, and every coding agent knows it well |
+| Language | Python 3.14 | Best scraping and stats ecosystem, and every coding agent knows it well |
 | Package manager | `uv` with `uv.lock` | Fast, reproducible, one tool |
 | Data access | `httpx` + `tenacity` for downloads; DuckDB's `sqlite` extension to read `canon.db` directly; `rapidfuzz` for name matching | No HTML scraping needed |
 | Database | **DuckDB** (single file) | Analytical SQL, very fast on this data size, no server, easy to ship as one file to free hosts |

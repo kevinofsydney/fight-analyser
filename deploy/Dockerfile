@@ -1,5 +1,5 @@
 # One image for both the app and the daily refresher (see deploy/docker-compose.yml).
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG SUPERCRONIC_VERSION=v0.2.33
 ARG TARGETARCH

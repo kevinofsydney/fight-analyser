@@ -75,7 +75,7 @@ def fmt_stat(key: str, value: Any) -> str:
             return f"{value:.0f} cm ({inches:.1f} in)"
     try:
         return s.fmt.format(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return str(value)
 
 

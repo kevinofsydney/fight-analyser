@@ -258,7 +258,7 @@ Spec: [ANALYSIS_IDEAS.md](ANALYSIS_IDEAS.md) §1–3 and PRD §4.6. All of these
 ### T7.3 Scheduled refresh (homelab: Docker) 🟢
 - **Depends on:** T7.1
 - **Files owned:** `deploy/Dockerfile`, `deploy/docker-compose.yml`, `deploy/crontab`, `.dockerignore`
-- **Steps:** one image (python:3.12-slim + uv + supercronic). Compose services: `app` (runs `streamlit run`, port 8501, reads the DB volume read-only) and `refresher` (runs supercronic with `deploy/crontab` → `fightdb refresh`). Shared named volume `fightdb-data` mounted at `/data`. `env_file: ../.env`. Healthcheck on the app.
+- **Steps:** one image (python:3.14-slim + uv + supercronic). Compose services: `app` (runs `streamlit run`, port 8501, reads the DB volume read-only) and `refresher` (runs supercronic with `deploy/crontab` → `fightdb refresh`). Shared named volume `fightdb-data` mounted at `/data`. `env_file: ../.env`. Healthcheck on the app.
 - **Acceptance:** `make docker-up` on a fresh machine brings up both services. `docker compose exec refresher fightdb refresh` works manually.
 
 ---
