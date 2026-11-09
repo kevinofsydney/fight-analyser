@@ -43,7 +43,13 @@ with st.form("hyp"):
     c1, c2, c3, c4 = st.columns(4)
     divisions = c1.multiselect("Divisions", DIVISIONS, default=["lightweight"])
     sex = c2.selectbox("Sex", ["M", "F", "Any"], index=0)
-    date_from = c3.date_input("From", dt.date(2010, 1, 1), min_value=dt.date(1993, 1, 1))
+    date_from = c3.date_input(
+        "From",
+        dt.date(2010, 1, 1),
+        min_value=dt.date(1993, 1, 1),
+        max_value=dt.date.today(),
+        help="Include completed fights from this date through the latest available results.",
+    )
     min_fights = c4.number_input("Min prior UFC fights (each fighter)", 0, 30, 0)
     c5, c6 = st.columns(2)
     title_only = c5.checkbox("Title fights only")

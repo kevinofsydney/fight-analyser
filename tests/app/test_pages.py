@@ -99,3 +99,13 @@ def test_fighter_wear_profile_renders(db):
     assert not at.exception, [e.value for e in at.exception]
     assert any(h.value == "Fight wear (UFC history)" for h in at.subheader)
     assert any(m.label == "Strikes absorbed" for m in at.metric)
+
+
+def test_hypothesis_date_allows_recent_start(db):
+    from datetime import date
+
+    at = AppTest.from_file(str(APP / "pages" / "2_Hypothesis_Lab.py"), default_timeout=120)
+    at.run()
+    at.date_input[0].set_value(date.today()).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.date_input[0].value == date.today()
