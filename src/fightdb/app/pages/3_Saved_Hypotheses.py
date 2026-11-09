@@ -383,4 +383,3 @@ for index, (h, r, up) in enumerate(details):
                 st.session_state["bout_id"] = previous.iloc[selection.selection.rows[0]]["bout_id"]
                 st.switch_page("pages/1_Bout.py")
         st.code(schema.to_yaml(h), language="yaml")
-

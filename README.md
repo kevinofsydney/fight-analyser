@@ -97,4 +97,3 @@ Code: [MIT](LICENSE). The license covers this repository's code, not the upstrea
 - Judges' scorecards via fight-canon-db (from mmadecisions.com and ufc.com)
 
 Both datasets originate from [UFC Stats](http://ufcstats.com). Used for personal, non-commercial analysis. Model probabilities are not betting advice.
-

@@ -311,4 +311,3 @@ def test_chart_groups_count_each_bout_once_and_preserve_wins():
     assert groups["count"].sum() == 3
     assert groups["successes"].sum() == 2
     assert ((groups["ci_low"] <= groups["rate"]) & (groups["rate"] <= groups["ci_high"])).all()
-
