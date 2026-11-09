@@ -25,7 +25,10 @@ def _write(con: duckdb.DuckDBPyConnection, table: str, df: pd.DataFrame) -> None
 
 def build_all(con: duckdb.DuckDBPyConnection, train_models: bool = True) -> dict[str, int]:
     log.info("building snapshots")
-    snap, priors = snapshots.build_snapshots(con)
+    snap, priors = snapshots.build_snapshots(con, current_as_of=pd.Timestamp.today().normalize())
+    is_current = snap["bout_id"].str.startswith(snapshots.CURRENT_PREFIX)
+    _write(con, "fighter_current", snap[is_current].reset_index(drop=True))
+    snap = snap[~is_current].reset_index(drop=True)
     _write(con, "fighter_snapshots", snap)
     _write(
         con, "shrinkage_priors", pd.DataFrame({"stat": list(priors), "k": list(priors.values())})
@@ -40,13 +43,16 @@ def build_all(con: duckdb.DuckDBPyConnection, train_models: bool = True) -> dict
     pred_cols = ["p_win", "p_win_ko", "p_win_sub", "p_win_dec", "p_distance"]
     if train_models and (sides["status"] == "completed").sum() > 500:
         log.info("training outcome models (walk-forward)")
-        oos, evals = outcome.walk_forward(sides)
+        yearly: dict[int, outcome.FittedModels] = {}
+        oos, evals = outcome.walk_forward(sides, yearly)
         if not evals.empty:
             con.execute("DELETE FROM model_evals")
             _insert_evals(con, evals)
         final = outcome.fit(
             sides[(sides["status"] == "completed") & (sides["year"] >= outcome.TRAIN_FROM_YEAR)]
         )
+        weights = [outcome.model_weights(m, y) for y, m in yearly.items()]
+        _write(con, "model_weights", pd.concat([*weights, outcome.model_weights(final, None)]))
         upcoming = (
             final.predict(sides[sides["status"] == "scheduled"])
             if (sides["status"] == "scheduled").any()

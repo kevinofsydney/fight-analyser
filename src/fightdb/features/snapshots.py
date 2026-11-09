@@ -400,13 +400,38 @@ def _priors_by_year(
     return rows, table[years[-1]] if years else compute_priors(career.iloc[0:0], h.iloc[0:0])
 
 
-def build_snapshots(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, dict[str, float]]:
+CURRENT_PREFIX = "current:"
+
+
+def _current_queries(q: pd.DataFrame, as_of: pd.Timestamp) -> pd.DataFrame:
+    """One extra query per fighter with a completed fight: their state on `as_of`, in the
+    division of their latest fight. Scheduled status gives them their latest Elo."""
+    last = q[q["status"] == "completed"].sort_values("date").groupby("fighter_id").tail(1)
+    return pd.DataFrame(
+        {
+            "bout_id": CURRENT_PREFIX + last["fighter_id"],
+            "fighter_id": last["fighter_id"],
+            "opp_id": None,
+            "date": as_of,
+            "division": last["division"],
+            "status": "scheduled",
+        }
+    )
+
+
+def build_snapshots(
+    con: duckdb.DuckDBPyConnection, current_as_of: pd.Timestamp | None = None
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Snapshots before every bout. With `current_as_of`, also one row per fighter as of that day
+    (bout_id `current:<fighter_id>`) for hypothetical matchups."""
     sides = load_sides(con)
     wear = _wear_by_day(sides)
     h = _history_rows(sides)
     career = _career_by_day(h)
 
     q = sides[["bout_id", "fighter_id", "opp_id", "date", "division", "status"]].copy()
+    if current_as_of is not None:
+        q = pd.concat([q, _current_queries(q, current_as_of)], ignore_index=True)
     s = _asof(q, career, by="fighter_id")
     s[COUNT_COLS] = s[COUNT_COLS].fillna(0)
     s = _asof(s, wear, by="fighter_id")

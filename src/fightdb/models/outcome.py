@@ -176,6 +176,95 @@ def fit(train: pd.DataFrame) -> FittedModels:
     return FittedModels(ws, win, ms, method)
 
 
+WEIGHT_COLUMNS = ["model_year", "model", "cls", "feature", "coef", "intercept", "mean", "scale"]
+
+
+def model_weights(model: FittedModels, model_year: int | None) -> pd.DataFrame:
+    """Both models as plain numbers (one row per class and feature), so the app can rebuild them
+    without unpickling anything. `model_year` is the walk-forward test year, None for the final
+    model used on scheduled bouts."""
+    rows = []
+    for name, scaler, lr, feats in (
+        ("win", model.win_scaler, model.win, DIFF_FEATURES),
+        ("method", model.method_scaler, model.method, METHOD_DIFF_FEATURES + LEVEL_FEATURES),
+    ):
+        means = scaler.mean_ if scaler.with_mean else np.zeros(len(feats))
+        classes = [str(c) for c in lr.classes_]
+        labels = classes if lr.coef_.shape[0] == len(classes) else classes[-1:]
+        for i, cls in enumerate(labels):
+            for j, feat in enumerate(feats):
+                rows.append(
+                    (
+                        model_year,
+                        name,
+                        cls,
+                        feat,
+                        float(lr.coef_[i, j]),
+                        float(lr.intercept_[i]) if lr.fit_intercept else 0.0,
+                        float(means[j]),
+                        float(scaler.scale_[j]),
+                    )
+                )
+    out = pd.DataFrame(rows, columns=WEIGHT_COLUMNS)
+    out["model_year"] = out["model_year"].astype("Int64")
+    return out
+
+
+def _rebuild(
+    w: pd.DataFrame, feats: list[str], binary: bool
+) -> tuple[StandardScaler, LogisticRegression]:
+    classes = list(dict.fromkeys(w["cls"]))
+    first = w[w["cls"] == classes[0]].set_index("feature").reindex(feats)
+    scaler = StandardScaler(with_mean=bool((first["mean"] != 0).any()))
+    scaler.mean_ = first["mean"].to_numpy(dtype=float)
+    scaler.scale_ = first["scale"].to_numpy(dtype=float)
+    scaler.var_ = scaler.scale_**2
+    scaler.n_features_in_ = len(feats)
+    scaler.n_samples_seen_ = 1
+    lr = LogisticRegression(fit_intercept=bool((w["intercept"] != 0).any()))
+    coef = np.vstack(
+        [w[w["cls"] == c].set_index("feature").reindex(feats)["coef"].to_numpy() for c in classes]
+    )
+    lr.coef_ = coef
+    lr.intercept_ = np.array(
+        [w.loc[w["cls"] == c, "intercept"].iloc[0] for c in classes], dtype=float
+    )
+    lr.classes_ = np.array([0, 1]) if binary else np.array(classes, dtype=object)
+    lr.n_features_in_ = len(feats)
+    return scaler, lr
+
+
+def from_weights(weights: pd.DataFrame) -> FittedModels:
+    """Inverse of `model_weights` for one model_year."""
+    ws, win = _rebuild(weights[weights["model"] == "win"], DIFF_FEATURES, binary=True)
+    ms, method = _rebuild(
+        weights[weights["model"] == "method"], METHOD_DIFF_FEATURES + LEVEL_FEATURES, binary=False
+    )
+    return FittedModels(ws, win, ms, method)
+
+
+def win_contributions(model: FittedModels, side: pd.DataFrame) -> pd.DataFrame:
+    """How each input moved one side's win probability (first row of `side`).
+
+    The win model is a weighted sum of self-minus-opponent gaps with no intercept, so the pushes
+    add up exactly to the log-odds behind p_win: p_win = 1 / (1 + exp(-sum(push))). Missing
+    gaps count as 0, as in training.
+    """
+    s = add_matchup_diffs(side.iloc[[0]])
+    gaps = s.reindex(columns=DIFF_FEATURES).astype(float).iloc[0]
+    scale = model.win_scaler.scale_
+    coef = model.win.coef_[0]
+    return pd.DataFrame(
+        {
+            "feature": DIFF_FEATURES,
+            "gap": gaps.to_numpy(),
+            "typical_gap": scale,
+            "weight": coef,
+            "push": coef * gaps.fillna(0.0).to_numpy() / scale,
+        }
+    )
+
+
 def _reliability(y: np.ndarray, p: np.ndarray, bins: int = 10) -> list[dict[str, float]]:
     edges = np.linspace(0, 1, bins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, bins - 1)
@@ -194,8 +283,12 @@ def _reliability(y: np.ndarray, p: np.ndarray, bins: int = 10) -> list[dict[str,
     return out
 
 
-def walk_forward(sides: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Train on years before Y, predict year Y. Returns (out-of-sample predictions, evals)."""
+def walk_forward(
+    sides: pd.DataFrame, models: dict[int, FittedModels] | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Train on years before Y, predict year Y. Returns (out-of-sample predictions, evals).
+
+    Pass `models` to also collect each year's fitted model, keyed by test year."""
     done = sides[(sides["status"] == "completed") & (sides["year"] >= TRAIN_FROM_YEAR)]
     years = sorted(y for y in done["year"].unique() if y >= FIRST_TEST_YEAR)
     preds, evals = [], []
@@ -204,6 +297,8 @@ def walk_forward(sides: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         if train.empty or test.empty:
             continue
         model = fit(train)
+        if models is not None:
+            models[int(y)] = model
         p = model.predict(test)
         preds.append(p)
         evals.append(_evaluate(test, p, y))

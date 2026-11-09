@@ -194,3 +194,52 @@ def test_elo_breakdown_reproduces_compute_elo():
     assert steps["change"].iloc[2] == 0.0
     assert steps["elo_after"].iloc[-1] == pytest.approx(now["a"])
     assert 1500 + steps["change"].sum() == pytest.approx(now["a"])
+
+
+def test_saved_weights_rebuild_identical_models_and_pushes_add_up(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides WHERE status = 'completed'").df()
+    model = outcome.fit(sides)
+    weights = outcome.model_weights(model, None)
+    assert weights["model_year"].isna().all()
+    assert set(weights["model"]) == {"win", "method"}
+    rebuilt = outcome.from_weights(weights)
+
+    expected = model.predict(sides)
+    got = rebuilt.predict(sides)
+    cols = ["p_win", "p_win_ko", "p_win_sub", "p_win_dec", "p_distance"]
+    assert np.allclose(got[cols].to_numpy(), expected[cols].to_numpy(), equal_nan=True)
+
+    p = expected.set_index(["bout_id", "fighter_id"])["p_win"]
+    for _, row in sides.head(25).iterrows():
+        pushes = outcome.win_contributions(rebuilt, row.to_frame().T)
+        assert list(pushes["feature"]) == outcome.DIFF_FEATURES
+        total = pushes["push"].sum()
+        assert 1 / (1 + np.exp(-total)) == pytest.approx(p[(row.bout_id, row.fighter_id)])
+
+
+def test_current_snapshots_add_rows_without_changing_bout_snapshots(synthetic_db):
+    from fightdb.features import snapshots
+
+    plain, _ = snapshots.build_snapshots(synthetic_db)
+    both, _ = snapshots.build_snapshots(synthetic_db, pd.Timestamp("2030-01-01"))
+    current = both[both["bout_id"].str.startswith(snapshots.CURRENT_PREFIX)]
+    rest = both[~both["bout_id"].str.startswith(snapshots.CURRENT_PREFIX)]
+    key = ["bout_id", "fighter_id"]
+    pd.testing.assert_frame_equal(
+        plain.sort_values(key).reset_index(drop=True),
+        rest.sort_values(key).reset_index(drop=True),
+        check_dtype=False,
+    )
+    done = synthetic_db.execute(
+        """SELECT count(DISTINCT fighter_id) FROM bout_sides WHERE status = 'completed'"""
+    ).fetchone()[0]
+    assert len(current) == done and current["fighter_id"].is_unique
+    _, elo_now = ratings.compute_elo(
+        synthetic_db.execute(
+            """SELECT b.bout_id, e.date, b.fighter_a_id, b.fighter_b_id, b.result_a, b.method_group
+               FROM bouts b JOIN events e USING (event_id) WHERE b.status = 'completed'"""
+        )
+        .df()
+        .assign(date=lambda d: pd.to_datetime(d["date"]))
+    )
+    assert current.set_index("fighter_id")["elo"].to_dict() == pytest.approx(elo_now)

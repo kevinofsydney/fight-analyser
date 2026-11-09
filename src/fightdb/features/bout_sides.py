@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from fightdb.features.stat_meta import feature_keys
-from fightdb.models.matchup import MATCHUP_COLS
+from fightdb.models.matchup import MATCHUP_COLS, project
 from fightdb.models.ratings import SCHEDULE_ADJUSTED
 
 _BOUTS_SQL = """
@@ -119,6 +119,44 @@ def build_bout_sides(
     snap = snap.drop(columns=["days_notice"], errors="ignore").merge(
         days_notice(con), on=["bout_id", "fighter_id"], how="left"
     )
+    sides = attach_features(sides, snap, proj)
+
+    odds = con.execute(
+        "SELECT bout_id, fighter_id, implied_prob_close AS self_implied_prob FROM odds"
+    ).df()
+    sides = sides.merge(odds, on=["bout_id", "fighter_id"], how="left")
+
+    sides = _outcomes(sides)
+    for p in ("self", "opp"):
+        known = sides[f"{p}_days_notice"].notna()
+        sides[f"{p}_short_notice"] = np.where(
+            known, (sides[f"{p}_days_notice"] < SHORT_NOTICE_DAYS).astype(float), np.nan
+        )
+    for p in ("self", "opp"):
+        for stance in ("Southpaw", "Orthodox"):
+            value = sides[f"{p}_stance"]
+            sides[f"{p}_{stance.lower()}"] = np.where(
+                value.isin(["Southpaw", "Orthodox", "Switch", "Open Stance", "Sideways"]),
+                (value == stance).astype(float),
+                np.nan,
+            )
+    return sides
+
+
+def hypothetical_sides(current: pd.DataFrame, a_id: str, b_id: str) -> pd.DataFrame:
+    """Both sides of an imagined bout between two fighters, from their `fighter_current` rows,
+    with the same self_/opp_/diff_ and projected columns the models use for real bouts."""
+    snap = current[current["fighter_id"].isin([a_id, b_id])].assign(bout_id="matchup")
+    pairs = pd.DataFrame({"bout_id": "matchup", "fighter_id": [a_id, b_id], "opp_id": [b_id, a_id]})
+    proj = project(snap, pairs)
+    return attach_features(pairs.assign(is_a=[True, False]), snap, proj)
+
+
+def attach_features(
+    sides: pd.DataFrame, snap: pd.DataFrame, proj: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Add self_/opp_/diff_ snapshot columns (and projections) to rows keyed by
+    bout_id, fighter_id and opp_id."""
     keys = [k for k in feature_keys() if k in snap.columns]
     raw_idx = [f"{c}_raw" for c in SCHEDULE_ADJUSTED if f"{c}_raw" in snap.columns]
     extra = [c for c in ("moving_division", *raw_idx) if c in snap.columns]
@@ -142,26 +180,6 @@ def build_bout_sides(
         sides = sides.merge(p_self, on=["bout_id", "fighter_id"], how="left").merge(
             p_opp, on=["bout_id", "opp_id"], how="left"
         )
-
-    odds = con.execute(
-        "SELECT bout_id, fighter_id, implied_prob_close AS self_implied_prob FROM odds"
-    ).df()
-    sides = sides.merge(odds, on=["bout_id", "fighter_id"], how="left")
-
-    sides = _outcomes(sides)
-    for p in ("self", "opp"):
-        known = sides[f"{p}_days_notice"].notna()
-        sides[f"{p}_short_notice"] = np.where(
-            known, (sides[f"{p}_days_notice"] < SHORT_NOTICE_DAYS).astype(float), np.nan
-        )
-    for p in ("self", "opp"):
-        for stance in ("Southpaw", "Orthodox"):
-            value = sides[f"{p}_stance"]
-            sides[f"{p}_{stance.lower()}"] = np.where(
-                value.isin(["Southpaw", "Orthodox", "Switch", "Open Stance", "Sideways"]),
-                (value == stance).astype(float),
-                np.nan,
-            )
     return sides
 
 

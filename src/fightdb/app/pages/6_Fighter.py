@@ -5,6 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from fightdb.app.freshness import reload_changed_modules
+
+reload_changed_modules()
+
 import altair as alt
 import pandas as pd
 import streamlit as st
