@@ -44,17 +44,19 @@ bio = data.query("SELECT * FROM fighters WHERE fighter_id = ?", [fid]).iloc[0]
 hist = data.query("SELECT * FROM bout_sides WHERE fighter_id = ? ORDER BY event_date", [fid])
 latest = hist.iloc[-1]
 
-st.header(bio["name"] + (f' "{bio["nickname"]}"' if bio["nickname"] else ""))
+nickname = bio["nickname"] if pd.notna(bio["nickname"]) else ""
+st.header(bio["name"] + (f' "{nickname}"' if nickname else ""))
 c = st.columns(5)
+record = [bio["pro_wins"], bio["pro_losses"], bio["pro_draws"]]
 c[0].metric(
     "Pro record (current)",
-    f"{bio['pro_wins'] or 0:.0f}-{bio['pro_losses'] or 0:.0f}-{bio['pro_draws'] or 0:.0f}"
-    if bio["pro_wins"] == bio["pro_wins"]
+    "-".join(f"{value:.0f}" for value in record)
+    if all(pd.notna(value) for value in record)
     else "—",
 )
 c[1].metric("Height", components.fmt_stat("height_cm", bio["height_cm"]))
 c[2].metric("Reach", components.fmt_stat("reach_cm", bio["reach_cm"]))
-c[3].metric("Stance", bio["stance"] or "—")
+c[3].metric("Stance", bio["stance"] if pd.notna(bio["stance"]) else "—")
 c[4].metric("Elo now", f"{latest['self_elo']:.0f}")
 
 # Build a current profile from completed fights, including the most recent fight.
