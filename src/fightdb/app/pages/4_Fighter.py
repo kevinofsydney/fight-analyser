@@ -29,7 +29,14 @@ labels = dict(
         strict=True,
     )
 )
-fid = st.selectbox("Fighter", ids, format_func=labels.get, index=None, placeholder="Type a name…")
+fid = st.selectbox(
+    "Fighter",
+    ids,
+    format_func=labels.get,
+    index=None,
+    placeholder="Type a name…",
+    key="fighter_selector",
+)
 if not fid:
     st.stop()
 

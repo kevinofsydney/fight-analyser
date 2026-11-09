@@ -88,9 +88,14 @@ def test_past_bout_shows_elo_and_round_stats(db):
 
 
 def test_fighter_wear_profile_renders(db):
+    import duckdb
+
+    con = duckdb.connect(str(db), read_only=True)
+    fighter_id = con.execute("SELECT fighter_id FROM bout_sides LIMIT 1").fetchone()[0]
+    con.close()
     at = AppTest.from_file(str(APP / "pages" / "4_Fighter.py"), default_timeout=120)
+    at.session_state["fighter_selector"] = fighter_id
     at.run()
-    at.selectbox[0].select_index(1).run()
     assert not at.exception, [e.value for e in at.exception]
     assert any(h.value == "Fight wear (UFC history)" for h in at.subheader)
     assert any(m.label == "Strikes absorbed" for m in at.metric)
