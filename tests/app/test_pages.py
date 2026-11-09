@@ -154,7 +154,8 @@ def test_saved_hypothesis_shows_matching_fights(db):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert any("Explore historical outcomes" in m.value for m in at.markdown)
-    assert any("logistic fit" in c.value for c in at.caption)
+    assert any("95% Wilson interval" in c.value for c in at.caption)
+    assert any("One eligible fighter" in c.value for c in at.caption)
     assert any("Previous matching fights" in m.value for m in at.markdown)
     assert any("Matching fighter" in df.value.columns for df in at.dataframe)
 
@@ -278,3 +279,35 @@ def test_fighter_summary_formats_missing_data_and_portrait_safely():
     assert "players/full/12345.png" in portrait
     assert "&lt;Smith&gt;" in portrait
     assert "players/full" not in fighter_portrait("Fighter", "123' onload='alert(1)")
+
+
+def test_chart_groups_count_each_bout_once_and_preserve_wins():
+    import ast
+
+    import pandas as pd
+
+    from fightdb.analytics import stats
+
+    page = APP / "pages" / "3_Saved_Hypotheses.py"
+    module = ast.parse(page.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "group_observations"
+    )
+    namespace = {"pd": pd, "stats": stats}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(page), "exec"), namespace)
+    observations = pd.DataFrame(
+        {
+            "bout_id": ["a", "a", "b", "b", "c"],
+            "fighter_id": ["x", "y", "x", "z", "x"],
+            "feature_value": [4.0, -4.0, 1.0, -1.0, 4.0],
+            "outcome_value": [1, 0, 0, 1, 1],
+        }
+    )
+    fights, groups = namespace["group_observations"](observations)
+    assert len(fights) == 3
+    assert set(fights["fighter_id"]) == {"x"}
+    assert groups["count"].sum() == 3
+    assert groups["successes"].sum() == 2
+    assert ((groups["ci_low"] <= groups["rate"]) & (groups["rate"] <= groups["ci_high"])).all()
