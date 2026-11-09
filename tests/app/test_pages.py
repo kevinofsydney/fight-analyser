@@ -148,7 +148,7 @@ def test_bout_reset_opens_next_event_main_fight(db, tmp_path, monkeypatch):
 
 def test_saved_hypothesis_shows_matching_fights(db):
     at = AppTest.from_file(str(APP / "pages" / "3_Saved_Hypotheses.py"), default_timeout=120)
-    at.session_state["hypothesis_0"] = True
+    at.session_state["hypothesis_1"] = True
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert any("Previous matching fights" in m.value for m in at.markdown)
