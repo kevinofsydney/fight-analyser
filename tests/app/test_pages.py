@@ -227,3 +227,37 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert set(tables[0]["Decimal odds"]) == {"1.75", "2.15"}
     finally:
         get_settings.cache_clear()
+
+
+def test_home_card_selection_opens_selected_bout(db, tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    import duckdb
+    from streamlit.elements.arrow import DataframeSelectionSerde
+
+    path = tmp_path / "home-card.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id = con.execute("SELECT event_id FROM events ORDER BY date DESC LIMIT 1").fetchone()[0]
+    con.execute("UPDATE events SET status = 'upcoming' WHERE event_id = ?", [event_id])
+    bouts = con.execute(
+        "SELECT bout_id FROM bout_sides WHERE event_id = ? AND is_a ORDER BY card_order", [event_id]
+    ).fetchall()
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "Home.py"), default_timeout=120)
+        at.session_state[f"card_{event_id}"] = DataframeSelectionSerde().deserialize(
+            json.dumps({"selection": {"rows": [1]}})
+        )
+        at.session_state["bout_event_selector"] = "stale-event"
+        at.session_state["bout_selector"] = "stale-bout"
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert at.session_state["bout_id"] == bouts[1][0]
+        assert at.session_state["bout_event_selector"] == event_id
+        assert at.session_state["bout_selector"] == bouts[1][0]
+    finally:
+        get_settings.cache_clear()

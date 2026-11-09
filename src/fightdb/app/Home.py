@@ -41,6 +41,7 @@ with left:
             if card.empty:
                 st.caption("No bouts listed yet.")
                 continue
+            card = card.reset_index(drop=True)
             show = card.assign(
                 bout=card["fighter_name"] + "  vs  " + card["opp_name"],
                 model=card["self_p_win"].map(lambda p: "—" if p != p else f"{p:.0%} / {1 - p:.0%}"),
@@ -50,7 +51,7 @@ with left:
                 + " / "
                 + card["opp_ufc_fights"].astype(int).astype(str),
             )
-            st.dataframe(
+            selection = st.dataframe(
                 show[
                     [
                         "bout",
@@ -64,6 +65,9 @@ with left:
                 ],
                 hide_index=True,
                 width="stretch",
+                on_select="rerun",
+                selection_mode="single-row",
+                key=f"card_{ev.event_id}",
                 column_config={
                     "bout": "Bout (main event first)",
                     "weight_class": "Weight class",
@@ -78,18 +82,11 @@ with left:
                     ),
                 },
             )
-            pick = st.selectbox(
-                "Open tale of the tape",
-                options=card["bout_id"].tolist(),
-                format_func=lambda b, c=card: " vs ".join(
-                    c.loc[c["bout_id"] == b, ["fighter_name", "opp_name"]].iloc[0]
-                ),
-                key=f"pick_{ev.event_id}",
-                index=None,
-                placeholder="Choose a bout…",
-            )
-            if pick:
-                st.session_state["bout_id"] = pick
+            st.caption("Select a fight to open its Bout page.")
+            if selection.selection.rows:
+                st.session_state["bout_id"] = card.iloc[selection.selection.rows[0]]["bout_id"]
+                for key in ("bout_event_selector", "bout_selector"):
+                    st.session_state.pop(key, None)
                 st.switch_page("pages/1_Bout.py")
 
 st.caption(
