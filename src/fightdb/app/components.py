@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hmac
 import math
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 from fightdb import errorlog
@@ -52,12 +53,42 @@ def _freshness_sidebar() -> None:
             return
         finished = run["finished_at"]
         age_h = (datetime.now(UTC).replace(tzinfo=None) - finished).total_seconds() / 3600
-        st.caption(f"Last refreshed {finished:%Y-%m-%d %H:%M} UTC ({age_h:.0f} h ago)")
+        st.caption(f"Last refreshed {fmt_date(finished, with_time=True)} UTC ({age_h:.0f} h ago)")
         st.caption(f"History source: {run['source']} {run['source_version'] or ''}")
         if age_h > get_settings().stale_after_hours:
             st.warning(
                 f"Data is {age_h:.0f} hours old. The daily refresh may be failing; see Status."
             )
+
+
+def fmt_date(value: Any, *, with_time: bool = False) -> str:
+    """Format dates for display without changing their timezone or precision."""
+    if value is None or pd.isna(value):
+        return "—"
+    if not isinstance(value, date):
+        value = pd.Timestamp(value)
+    day = value.day
+    suffix = "th" if 10 <= day % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    result = f"{day}{suffix} {value:%B %Y}"
+    if with_time:
+        result += (
+            f", {value.hour % 12 or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
+        )
+    return result
+
+
+def format_dates(
+    frame: pd.DataFrame, *, dates: tuple[str, ...] = (), timestamps: tuple[str, ...] = ()
+) -> pd.DataFrame:
+    """Format selected display columns, leaving the original frame intact."""
+    result = frame.copy()
+    for column in dates:
+        if column in result:
+            result[column] = result[column].map(fmt_date)
+    for column in timestamps:
+        if column in result:
+            result[column] = result[column].map(lambda value: fmt_date(value, with_time=True))
+    return result
 
 
 def fmt_stat(key: str, value: Any) -> str:

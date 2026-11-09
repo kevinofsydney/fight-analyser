@@ -22,7 +22,16 @@ runs = data.query(
     "FROM scrape_runs ORDER BY started_at DESC LIMIT 30"
 )
 st.subheader("Refresh runs")
-st.dataframe(runs.drop(columns=["counts"]), hide_index=True, width="stretch")
+st.caption("Refresh times are UTC.")
+st.dataframe(
+    components.format_dates(
+        runs.drop(columns=["counts"]),
+        dates=("max_event_date",),
+        timestamps=("started_at", "finished_at"),
+    ),
+    hide_index=True,
+    width="stretch",
+)
 
 if not runs.empty and runs.iloc[0]["counts"]:
     last = json.loads(runs.iloc[0]["counts"])

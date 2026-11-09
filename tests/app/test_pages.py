@@ -53,3 +53,35 @@ def test_page_renders(db, page):
 
 def test_settings_point_at_test_db(db):
     assert Settings().db_path == db
+
+
+def test_date_formatting():
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from fightdb.app.components import fmt_date, format_dates
+
+    assert fmt_date(date(2027, 3, 31)) == "31st March 2027"
+    assert fmt_date(date(2027, 3, 11)) == "11th March 2027"
+    assert fmt_date(datetime(2027, 3, 4, 16, 26), with_time=True) == "4th March 2027, 4:26 PM"
+    assert fmt_date(pd.NaT, with_time=True) == "—"
+    frame = pd.DataFrame({"event_date": [pd.Timestamp("2027-03-31")]})
+    assert format_dates(frame, dates=("event_date",)).iloc[0, 0] == "31st March 2027"
+    assert frame.iloc[0, 0] == pd.Timestamp("2027-03-31")
+
+
+def test_past_bout_shows_elo_and_round_stats(db):
+    import duckdb
+
+    con = duckdb.connect(str(db), read_only=True)
+    bout_id = con.execute(
+        "SELECT bout_id FROM bouts WHERE status = 'completed' LIMIT 1"
+    ).fetchone()[0]
+    con.close()
+    at = AppTest.from_file(str(APP / "pages" / "1_Bout.py"), default_timeout=120)
+    at.session_state["bout_id"] = bout_id
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any("Elo before fight" in m.label for m in at.metric)
+    assert any(h.value == "Fight statistics by round" for h in at.subheader)

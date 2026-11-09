@@ -184,7 +184,10 @@ if sw is not None and not sw.empty:
 if not upcoming.empty:
     st.subheader("Applies to upcoming bouts")
     st.dataframe(
-        upcoming[["event_name", "event_date", "fighter_name", "opp_name"]],
+        components.format_dates(
+            upcoming[["event_name", "event_date", "fighter_name", "opp_name"]],
+            dates=("event_date",),
+        ),
         hide_index=True,
         width="stretch",
     )
@@ -199,7 +202,9 @@ with st.expander(f"Matching bouts ({len(r.bout_ids):,})"):
                 FROM bout_sides WHERE bout_id IN (SELECT unnest(?)) ORDER BY event_date DESC""",
             [ids],
         )
-        st.dataframe(df, hide_index=True, width="stretch")
+        st.dataframe(
+            components.format_dates(df, dates=("event_date",)), hide_index=True, width="stretch"
+        )
 
 st.subheader("Save it")
 st.caption(
