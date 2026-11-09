@@ -5,6 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from fightdb.app.freshness import reload_changed_modules
+
+reload_changed_modules()
+
 import logging
 import math
 
@@ -14,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from fightdb.analytics import hypothesis, schema
-from fightdb.app import components, data
+from fightdb.app import components, data, explain
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, STATS
 from fightdb.models import outcome, ratings
@@ -485,11 +489,27 @@ if not math.isnan(pd_):
         f"Chance the fight goes the distance: {pd_:.0%} (division average {num(base['dist']):.0%})."
     )
 
+with st.expander("How the model calculated these chances"):
+    if math.isnan(num(a.self_p_win)):
+        st.caption("The model has no prediction for this bout.")
+    else:
+        model_year = explain.model_year_for(str(a.status), int(a.year))
+        win_model = explain.load_model(model_year)
+        if win_model is None:
+            st.caption("The breakdown appears after the next daily refresh.")
+        else:
+            st.caption(
+                f"Model trained on UFC fights before {a.year}, so it never saw this result."
+                if model_year is not None
+                else "Model trained on every completed UFC fight in the database."
+            )
+            explain.render_win_breakdown(a, win_model, str(a.fighter_name), str(b.fighter_name))
+
 with st.expander("What goes into the model outlook?"):
     st.write(
         "The win model compares the fighters using the pre-fight inputs below. "
         "Index values are relative to the division average (100); projected numbers are per round. "
-        "These are model inputs, not a breakdown of how much each one changed the probability."
+        "See “How the model calculated these chances” for how much each one moved the probability."
     )
     projection_labels = {
         "x_sig_r": "Projected significant strikes landed / round",

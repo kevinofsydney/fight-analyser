@@ -5,6 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from fightdb.app.freshness import reload_changed_modules
+
+reload_changed_modules()
+
 import datetime as dt
 import math
 
