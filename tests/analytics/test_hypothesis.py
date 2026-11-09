@@ -192,3 +192,24 @@ def test_matching_bout_sides_reject_invalid_pagination(synthetic_db):
         hypothesis.matching_bout_sides(synthetic_db, _h(), limit=0)
     with pytest.raises(ValueError):
         hypothesis.matching_bout_sides(synthetic_db, _h(), offset=-1)
+
+
+def test_exploration_plot_data_uses_correct_population_and_outcome(synthetic_db):
+    h = _h(
+        condition=[{"feature": "diff_age_years", "op": ">=", "value": 5}],
+        outcome="lost_ko",
+    )
+    matching = hypothesis.exploration_bout_sides(synthetic_db, h, "diff_age_years")
+    all_eligible = hypothesis.exploration_bout_sides(
+        synthetic_db, h, "diff_age_years", matched_only=False
+    )
+    result = hypothesis.evaluate(synthetic_db, h)
+    assert len(matching) == result.n
+    assert (matching["feature_value"] >= 5).all()
+    assert matching["outcome_value"].sum() == result.k
+    assert len(all_eligible) > len(matching)
+    assert {"fighter_name", "opp_name", "method", "result", "event_date"} <= set(matching)
+    boolean = hypothesis.exploration_bout_sides(synthetic_db, h, "is_title", matched_only=False)
+    assert set(boolean["feature_value"]) <= {0.0, 1.0}
+    with pytest.raises(ValueError):
+        hypothesis.exploration_bout_sides(synthetic_db, h, "age; DROP TABLE bouts")

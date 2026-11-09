@@ -205,6 +205,31 @@ def matching_bout_sides(
     ).df()
 
 
+def exploration_bout_sides(
+    con: duckdb.DuckDBPyConnection, h: Hypothesis, feature: str, *, matched_only: bool = True
+) -> pd.DataFrame:
+    """Historical fighter-side observations for a descriptive outcome plot."""
+    if feature not in allowed_features():
+        raise ValueError(f"unknown feature {feature!r}")
+    if h.outcome not in OUTCOMES:
+        raise ValueError(f"unknown outcome {h.outcome!r}")
+    population, params = _population_sql(h)
+    clause = ""
+    if matched_only:
+        condition, condition_params, _ = _condition_sql(h.condition)
+        clause = f" AND ({condition})"
+        params += condition_params
+    return con.execute(
+        f'''SELECT bout_id, fighter_id, event_date, event_name, fighter_name, opp_name,
+                   result, method, CAST("{feature}" AS DOUBLE) AS feature_value, "{h.outcome}" AS outcome_value
+            FROM bout_sides WHERE {population}{clause}
+              AND "{feature}" IS NOT NULL AND isfinite(CAST("{feature}" AS DOUBLE))
+              AND "{h.outcome}" IS NOT NULL
+            ORDER BY event_date DESC, bout_id, fighter_id''',
+        params,
+    ).df()
+
+
 def _verdict(
     h: Hypothesis,
     n: int,
