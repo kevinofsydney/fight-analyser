@@ -86,6 +86,13 @@ def test_past_bout_shows_elo_and_round_stats(db):
     assert at.title[0].value == "Bout"
     assert any(b.label == "Reset" for b in at.button)
     assert any(e.label == "What goes into the model outlook?" for e in at.expander)
+    index_items = [m for m in at.markdown if m.value == "Striking offence index"]
+    assert index_items and "opponent" in index_items[0].proto.help.lower()
+    raw_items = [
+        m for m in at.markdown if m.value == "Striking offence index (before schedule adjustment)"
+    ]
+    assert raw_items and "before the opponent-strength adjustment" in raw_items[0].proto.help
+    assert any(m.value == "Durability index" and "knockdowns" in m.proto.help for m in at.markdown)
     assert sum(c.value == "Current pro record" for c in at.caption) == 2
     assert sum(c.value == "Age at bout" for c in at.caption) == 2
     assert any("Elo before fight" in m.label for m in at.metric)

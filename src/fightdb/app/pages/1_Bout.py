@@ -342,22 +342,74 @@ with st.expander("What goes into the model outlook?"):
             return components.fmt_stat(key, value)
         return f"{value:.2f}"
 
+    index_explanations = {
+        "idx_str_off": (
+            "100 × the fighter's adjusted significant strikes landed per minute ÷ "
+            "the division's average significant strikes landed per minute."
+        ),
+        "idx_str_def": (
+            "100 × the division's average significant strikes landed per minute ÷ "
+            "the fighter's adjusted significant strikes absorbed per minute. "
+            "A higher value means fewer strikes absorbed."
+        ),
+        "idx_wrest_off": (
+            "100 × (adjusted takedown attempts per 15 minutes × adjusted takedown accuracy) "
+            "÷ the division's average takedowns landed per 15 minutes."
+        ),
+        "idx_wrest_def": (
+            "100 × the division's average takedown accuracy ÷ the fighter's adjusted "
+            "proportion of opponent takedown attempts allowed. A higher value means fewer allowed."
+        ),
+        "idx_sub_threat": (
+            "100 × the fighter's adjusted submission attempts per 15 minutes ÷ "
+            "the division's average submission attempts per 15 minutes."
+        ),
+        "idx_sub_def": (
+            "100 × the division's average submission losses per opponent attempt ÷ "
+            "the fighter's adjusted submission losses per opponent attempt. "
+            "A higher value means fewer submission losses per attempt faced."
+        ),
+        "idx_durability": (
+            "100 × the division's average knockdowns absorbed per significant strike absorbed "
+            "÷ the fighter's adjusted knockdowns absorbed per significant strike absorbed. "
+            "A higher value means fewer knockdowns per strike absorbed; this is not a medical assessment."
+        ),
+    }
+
+    def index_help(key: str) -> str | None:
+        raw = key.endswith("_raw")
+        name = key.removesuffix("_raw")
+        explanation = index_explanations.get(name)
+        if explanation is None:
+            return None
+        details = (
+            " Rates are adjusted towards the division average when the fighter has limited "
+            "UFC data. Division averages usually use the three years before the fight; "
+            "broader data is used when the sample is small. "
+            "100 represents the division baseline."
+        )
+        if name in ("idx_str_off", "idx_str_def", "idx_wrest_off", "idx_wrest_def"):
+            details += (
+                " This version is before the opponent-strength adjustment."
+                if raw
+                else " This version also adjusts for the strength of previous opponents."
+            )
+        return explanation + details
+
+    def input_table(keys: list[str]) -> None:
+        header = st.columns([2, 1.45, 1.45])
+        for col, label in zip(header, ("Input", a.fighter_name, b.fighter_name), strict=True):
+            col.caption(label)
+        for key in keys:
+            cols = st.columns([2, 1.45, 1.45], vertical_alignment="center")
+            cols[0].markdown(input_label(key), help=index_help(key))
+            cols[1].text(input_value(a, key))
+            cols[2].text(input_value(b, key))
+
     win_keys = [key.removeprefix("diff_") for key in outcome.DIFF_FEATURES]
     st.markdown("**Win probability inputs**")
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Input": input_label(key),
-                    a.fighter_name: input_value(a, key),
-                    b.fighter_name: input_value(b, key),
-                }
-                for key in win_keys
-            ]
-        ),
-        hide_index=True,
-        width="stretch",
-    )
+    st.caption("Hover over the question mark next to an index to see how it is calculated.")
+    input_table(win_keys)
     method_keys = list(
         dict.fromkeys(
             [key.removeprefix("diff_") for key in outcome.METHOD_DIFF_FEATURES]
@@ -372,20 +424,7 @@ with st.expander("What goes into the model outlook?"):
     st.caption(
         "The method model also considers the individual levels below. It uses the unadjusted versions of certain indices, as labelled."
     )
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Input": input_label(key),
-                    a.fighter_name: input_value(a, key),
-                    b.fighter_name: input_value(b, key),
-                }
-                for key in method_keys
-            ]
-        ),
-        hide_index=True,
-        width="stretch",
-    )
+    input_table(method_keys)
     st.caption(
         "Missing inputs are replaced with zero in the model; a dash means no recorded value. "
         "Method probabilities are scaled to agree with the win probability. "
