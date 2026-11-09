@@ -1,6 +1,6 @@
 # Next Tasks
 
-Updated 2026-11-09. Every engineering item from the post-v1 review is done on branch `task/next-tasks` (table below). What remains needs the owner, or is a model limitation we chose not to tune away.
+Updated 2026-11-09. Every item from the post-v1 review is done (table below). Nothing is open; the one thing left is a deployment that doesn't exist yet (see below).
 
 **Windows note:** without `make`, run `make check` as:
 ```bash
@@ -14,13 +14,12 @@ uv run ruff check src tests scripts && uv run ruff format --check src tests scri
 
 Done 2026-11-09: MIT license added, every row in [DECISIONS.md](DECISIONS.md) marked decided (recommended options), branch protection on `main`, `task/next-tasks` merged (closes issue #1). The B1 contract change (`sources/models.py`: source-neutral upcoming IDs) went in under the owner's "fix all outstanding issues" instruction.
 
-Still for the owner:
-1. **Starter saved hypotheses (D27):** `hypotheses/` only has `examples/`. Move or add the ones you want checked against every upcoming bout.
-2. **Deployment checks (T8.x):** confirm the public instance serves the `data-latest` DB and that `APP_PASSWORD` is set where the app is public.
+- **Starter saved hypotheses (D27):** done. `load_all` reads `hypotheses/` recursively, so the five ★ questions in `hypotheses/examples/` (age gap, reach, TD vs TDD, sub specialist, short notice) are already saved and matched against every upcoming bout. A hypothesis the database can't evaluate is now reported and skipped instead of breaking `run-all`, the Saved Hypotheses page or the Bout page.
+- **Deployment (T8.x):** the free path's data side works (the Daily refresh publishes `data-latest`; last asset 2026-11-08 16:51 UTC). **No public app is deployed yet:** the repo has no homepage, deployments or environments, so there's no `APP_PASSWORD` to check. Deploying to Streamlit Community Cloud needs the owner's Streamlit account: follow [DEPLOYMENT.md §B](DEPLOYMENT.md), set `DATA_RELEASE_URL` to the `data-latest` asset and set `APP_PASSWORD` (D16).
 
-## Known model limitation (not a bug)
+## Calibration gate (resolved)
 
-**Method-of-victory labels are hidden.** The method model is calibrated in every reliability bin except one: pooled over 2024–2026, its 0.5–0.6 bin predicts about 54% and observes about 67% (n=130), mostly big favourites winning on points. The calibration gate (FR-31) therefore hides the Bout page's "low / medium / high" labels; the probabilities themselves are still shown. Temperature, Platt and isotonic recalibration, recency weighting, weaker regularisation, a year trend and interaction terms were all tried walk-forward and none closed the gap; tuning further against the same three years would just fit the evaluation. Revisit when more 2026–2027 results arrive, or if the owner wants a different label policy.
+The "low / medium / high" labels were hidden by a bug in the gate, not the model: the six-class reliability check counted every probability twice (A's "loses by decision" is B's "wins by decision"), doubling bin sizes so a sparse 47-fighter bin looked like n≈100+. The gate now checks what the Bout page shows (each fighter's "wins by KO / submission / decision", counted once) pooled and per method, and gates each method's label separately. On 2024–2026 every bin with n ≥ 100 is within 3.5 pp for all three methods, so labels show. Watch: big favourites winning on points (0.5–0.6 bin, 53% predicted, 64% observed, n=47); if that bin passes 100 fighters and stays off, the gate hides only the decision label.
 
 ---
 
@@ -42,4 +41,4 @@ Still for the owner:
 | S1 | **Strength of schedule**: striking and wrestling indices adjusted for opponents' pre-fight quality (minutes-weighted, shrunk to neutral, re-centred on the trailing 3-year league average). Win model walk-forward Brier 0.2334 → 0.2322, log loss 0.659 → 0.6562, still calibrated. |
 | S1 (found while testing) | **Look-ahead fix**: shrinkage prior strengths were fitted on final career totals, so past snapshots shifted slightly with later fights. Now fitted walk-forward per calendar year; a test rewrites all fights after a cutoff and asserts no earlier snapshot changes. |
 | S2 | **Judge scores** imported (`judge_scores`, 71,518 UFC round scores, 467 judges) with a `judge_rounds` view (margin next to strike, control, takedown and knockdown differences) for questions 28–29. |
-| S3 | Method model gained finish-tendency and distance-rate features (log loss 1.6334 → 1.6237); see the known limitation above. |
+| S3 | Method model gained finish-tendency and distance-rate features (log loss 1.6334 → 1.6237); the calibration gate was fixed to count each probability once and gate each method separately (see above). |

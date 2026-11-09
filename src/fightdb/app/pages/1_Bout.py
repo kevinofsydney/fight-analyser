@@ -5,8 +5,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+import logging
 import math
 
+import duckdb
 import pandas as pd
 import streamlit as st
 
@@ -97,8 +99,9 @@ base = data.query(
 ).iloc[0]
 
 st.subheader("Model outlook")
-# Low / medium / high labels only once the method model passes its calibration check (FR-31).
-show_levels = data.method_labels_calibrated()
+# Low / medium / high labels only for methods whose probabilities pass the calibration check
+# (FR-31), each method judged on its own.
+levels_ok = data.method_labels_calibrated()
 cols = st.columns(2)
 for col, s in zip(cols, (a, b), strict=True):
     with col:
@@ -122,15 +125,22 @@ for col, s in zip(cols, (a, b), strict=True):
                     "Method": f"Wins by {label}",
                     "Probability": "—" if math.isnan(p) else f"{p:.0%}",
                     "Division avg": f"{num(base[bkey]):.0%}",
-                    "Level": components.level_vs_baseline(p, num(base[bkey])),
+                    "Level": components.level_vs_baseline(p, num(base[bkey]))
+                    if levels_ok.get(bkey)
+                    else "—",
                 }
             )
         table = pd.DataFrame(rows)
-        if not show_levels:
+        if not any(levels_ok.values()):
             table = table.drop(columns=["Level"])
         st.dataframe(table, hide_index=True, width="stretch")
-if not show_levels:
-    st.caption("Levels hidden: the method model hasn't passed its calibration check.")
+hidden = [m for m, ok in levels_ok.items() if not ok]
+if hidden:
+    st.caption(
+        "Levels hidden for "
+        + ", ".join({"ko": "KO/TKO", "sub": "submission", "dec": "decision"}[m] for m in hidden)
+        + ": those probabilities haven't passed their calibration check."
+    )
 pd_ = num(a.self_p_distance)
 if not math.isnan(pd_):
     st.caption(
@@ -223,12 +233,15 @@ found = False
 con = data.connect()
 try:
     for _path, h in schema.load_all(get_settings().hypotheses_dir):
-        m = hypothesis.matches_upcoming(con, h) if a.status == "scheduled" else pd.DataFrame()
-        hits = m[m["bout_id"] == bout_id] if not m.empty else m
-        for row in hits.itertuples():
-            found = True
-            r = hypothesis.evaluate(con, h, keep_bouts=False)
-            st.markdown(f"**{h.title}** applies to **{row.fighter_name}**.  \n{r.verdict}")
+        try:
+            m = hypothesis.matches_upcoming(con, h) if a.status == "scheduled" else pd.DataFrame()
+            hits = m[m["bout_id"] == bout_id] if not m.empty else m
+            for row in hits.itertuples():
+                r = hypothesis.evaluate(con, h, keep_bouts=False)
+                found = True
+                st.markdown(f"**{h.title}** applies to **{row.fighter_name}**.  \n{r.verdict}")
+        except duckdb.Error as exc:  # one bad hypothesis must not break the page
+            logging.getLogger(__name__).warning("hypothesis %s failed: %s", h.id, exc)
 finally:
     con.close()
 if not found:

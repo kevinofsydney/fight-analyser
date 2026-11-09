@@ -134,3 +134,28 @@ def test_walk_forward_evaluates_method_model(synthetic_db):
     assert (method["brier"] > 0).all() and (method["brier"] < 2).all()
     win = evals[evals["model_name"] == outcome.WIN_MODEL]
     assert set(method["test_year"]) == set(win["test_year"])
+
+
+def test_method_reliability_counts_each_probability_once(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides").df()
+    sides["self_p_win"] = np.nan
+    model = outcome.fit(sides)
+    p = model.predict(sides)
+    decided = sides[(sides["won"] + sides["lost"]) == 1]
+    hits, wins = outcome._win_by_method(decided, p)
+    # one row per fighter per decisive bout, three "wins by X" columns, no mirrored loss_* copies
+    assert hits.shape == wins.shape == (len(decided), 3)
+    assert hits.sum() == len(decided) / 2  # exactly one winner per bout
+    pooled = outcome._method_reliability(decided, p)
+    assert sum(b["n"] for b in pooled) == 3 * len(decided)
+
+
+def test_walk_forward_writes_per_method_reliability(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides").df()
+    sides["year"] = sides["year"] + 2
+    _, evals = outcome.walk_forward(sides)
+    win_years = set(evals.loc[evals["model_name"] == outcome.WIN_MODEL, "test_year"])
+    for m in outcome.METHODS:
+        rows = evals[evals["model_name"] == outcome.method_model_name(m)]
+        assert set(rows["test_year"]) == win_years
+        assert rows["reliability"].notna().all()
