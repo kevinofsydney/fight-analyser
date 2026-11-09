@@ -159,3 +159,38 @@ def test_walk_forward_writes_per_method_reliability(synthetic_db):
         rows = evals[evals["model_name"] == outcome.method_model_name(m)]
         assert set(rows["test_year"]) == win_years
         assert rows["reliability"].notna().all()
+
+
+def test_elo_breakdown_reproduces_compute_elo():
+    bouts = pd.DataFrame(
+        [
+            ("1", "2020-01-01", "a", "b", "W", "dec"),
+            ("2", "2020-02-01", "a", "c", "L", "ko_tko"),
+            ("3", "2020-03-01", "c", "a", None, None),
+            ("4", "2020-04-01", "b", "a", "L", "sub"),
+        ],
+        columns=["bout_id", "date", "fighter_a_id", "fighter_b_id", "result_a", "method_group"],
+    ).assign(date=lambda d: pd.to_datetime(d["date"]))
+    pre, now = ratings.compute_elo(bouts)
+    elo = pre.set_index(["bout_id", "fighter_id"])["elo"]
+    flip = {"W": "L", "L": "W"}
+    history = pd.DataFrame(
+        [
+            {
+                "bout_id": b.bout_id,
+                "event_date": b.date,
+                "opp_name": opp,
+                "self_elo": elo[(b.bout_id, "a")],
+                "opp_elo": elo[(b.bout_id, opp)],
+                "result": b.result_a if b.fighter_a_id == "a" else flip.get(b.result_a),
+                "method_group": b.method_group,
+            }
+            for b in bouts.itertuples()
+            for opp in [b.fighter_b_id if b.fighter_a_id == "a" else b.fighter_a_id]
+        ]
+    )
+    steps = ratings.elo_breakdown(history)
+    assert steps["k"].tolist()[:2] == [32.0, 40.0] and pd.isna(steps["k"].iloc[2])
+    assert steps["change"].iloc[2] == 0.0
+    assert steps["elo_after"].iloc[-1] == pytest.approx(now["a"])
+    assert 1500 + steps["change"].sum() == pytest.approx(now["a"])

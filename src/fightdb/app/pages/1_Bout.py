@@ -16,7 +16,7 @@ from fightdb.analytics import hypothesis, schema
 from fightdb.app import components, data
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, STATS
-from fightdb.models import outcome
+from fightdb.models import outcome, ratings
 
 components.page("Bout")
 st.title("Bout")
@@ -227,12 +227,81 @@ if a.status == "completed":
         f"Result: {winner + ' won' if winner else 'No winner'} · {a.method or ''} · round {a.end_round}"
     )
 
+ELO_HELP = (
+    f"Every fighter starts at {ratings.ELO_START:.0f}. After each UFC fight, Elo changes by "
+    f"K × (result − expected): result is 1 for a win, 0.5 for a draw and 0 for a loss; "
+    f"expected = 1 / (1 + 10^((opponent Elo − own Elo) / 400)); "
+    f"K = {ratings.ELO_K:.0f}, or {ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or "
+    "submission. No contests don't count. Open “How Elo was calculated” below for each fight."
+)
+RESULT_LABELS = {"W": "Win", "L": "Loss", "D": "Draw", "NC": "No contest"}
+METHOD_LABELS = {"ko_tko": "KO/TKO", "sub": "Submission", "dec": "Decision"}
+
 elo_cols = st.columns(2)
 for col, side in zip(elo_cols, (a, b), strict=True):
     col.metric(
         f"{side.fighter_name} · Elo before fight",
         f"{num(side.self_elo):.0f}" if not math.isnan(num(side.self_elo)) else "—",
+        help=ELO_HELP,
     )
+
+with st.expander("How Elo was calculated"):
+    st.markdown(
+        f"Each fighter starts at **{ratings.ELO_START:.0f}**. After every UFC fight the rating "
+        "moves by **K × (result − expected)**:\n"
+        "- **result**: 1 for a win, 0.5 for a draw, 0 for a loss (no contests don't count)\n"
+        "- **expected**: the chance of winning implied by the two ratings, "
+        "1 / (1 + 10^((opponent − own) / 400)); a 100-point edge means about 64%\n"
+        f"- **K**: {ratings.ELO_K:.0f} for a decision, "
+        f"{ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or submission\n\n"
+        "Beating a higher-rated opponent earns more than beating a lower-rated one, and the "
+        "opponent loses what the winner gains. Fights on the same day use ratings from before "
+        "that day. Only fights before this bout count."
+    )
+    for side in (a, b):
+        history = data.query(
+            """SELECT bout_id, event_date, opp_name, self_elo, opp_elo, result, method_group
+               FROM bout_sides
+               WHERE fighter_id = ? AND status = 'completed' AND event_date < ?""",
+            [side.fighter_id, side.event_date],
+        )
+        steps = ratings.elo_breakdown(history)
+        st.markdown(f"**{side.fighter_name}**")
+        if steps.empty:
+            st.caption(
+                f"No earlier UFC fights, so the rating is the {ratings.ELO_START:.0f} starting value."
+            )
+            continue
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Date": steps["event_date"].map(components.fmt_date),
+                    "Opponent": steps["opp_name"],
+                    "Elo before": steps["self_elo"].round(0),
+                    "Opponent Elo": steps["opp_elo"].round(0),
+                    "Expected win": (100 * steps["expected"]).round(0).astype(int).astype(str)
+                    + "%",
+                    "Result": steps["result"].map(lambda r: RESULT_LABELS.get(r, r or "—")),
+                    "Method": steps["method_group"].map(lambda m: METHOD_LABELS.get(m, m or "—")),
+                    "K": steps["k"],
+                    "Change": steps["change"].round(1),
+                    "Elo after": steps["elo_after"].round(0),
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Change": st.column_config.NumberColumn(format="%+.1f"),
+                "Elo before": st.column_config.NumberColumn(format="%.0f"),
+                "Opponent Elo": st.column_config.NumberColumn(format="%.0f"),
+                "Elo after": st.column_config.NumberColumn(format="%.0f"),
+                "K": st.column_config.NumberColumn(format="%.0f"),
+            },
+        )
+        st.caption(
+            f"{ratings.ELO_START:.0f} {steps['change'].sum():+.1f} over {len(steps)} fights "
+            f"= {num(side.self_elo):.0f} before this bout."
+        )
 
 for side in (a, b):
     if num(side.self_ufc_fights) < 3:

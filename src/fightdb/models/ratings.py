@@ -10,8 +10,64 @@ ELO_K = 32.0
 FINISH_MULT = 1.25
 
 
+ELO_SCORES = {"W": 1.0, "L": 0.0, "D": 0.5}
+ELO_FINISHES = ("ko_tko", "sub")
+
+
 def elo_expected(ra: float, rb: float) -> float:
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
+
+
+def elo_k(method_group: object) -> float:
+    return ELO_K * (FINISH_MULT if method_group in ELO_FINISHES else 1.0)
+
+
+def elo_delta(ra: float, rb: float, result: object, method_group: object) -> float | None:
+    """Rating change for the fighter rated `ra`; None for results that do not move Elo."""
+    score = ELO_SCORES.get(result) if isinstance(result, str) else None
+    if score is None:
+        return None
+    return elo_k(method_group) * (score - elo_expected(ra, rb))
+
+
+def elo_breakdown(history: pd.DataFrame) -> pd.DataFrame:
+    """Explain one fighter's Elo, fight by fight.
+
+    `history` holds the fighter's completed bouts before the bout being explained, with
+    event_date, opp_name, self_elo, opp_elo, result and method_group (pre-fight ratings).
+    """
+    rows = []
+    for h in history.sort_values(["event_date", "bout_id"]).itertuples(index=False):
+        delta = elo_delta(h.self_elo, h.opp_elo, h.result, h.method_group)
+        rows.append(
+            {
+                "event_date": h.event_date,
+                "opp_name": h.opp_name,
+                "self_elo": h.self_elo,
+                "opp_elo": h.opp_elo,
+                "expected": elo_expected(h.self_elo, h.opp_elo),
+                "result": h.result,
+                "method_group": h.method_group,
+                "k": elo_k(h.method_group) if delta is not None else None,
+                "change": delta if delta is not None else 0.0,
+                "elo_after": h.self_elo + (delta or 0.0),
+            }
+        )
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "event_date",
+            "opp_name",
+            "self_elo",
+            "opp_elo",
+            "expected",
+            "result",
+            "method_group",
+            "k",
+            "change",
+            "elo_after",
+        ],
+    )
 
 
 def compute_elo(bouts: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
@@ -31,11 +87,9 @@ def compute_elo(bouts: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
             ra, rc = ratings.get(a, ELO_START), ratings.get(c, ELO_START)
             rows.append((b.bout_id, a, ra))
             rows.append((b.bout_id, c, rc))
-            score = {"W": 1.0, "L": 0.0, "D": 0.5}.get(b.result_a)
-            if score is None:
+            delta = elo_delta(ra, rc, b.result_a, b.method_group)
+            if delta is None:
                 continue
-            k = ELO_K * (FINISH_MULT if b.method_group in ("ko_tko", "sub") else 1.0)
-            delta = k * (score - elo_expected(ra, rc))
             pending[a] = pending.get(a, 0.0) + delta
             pending[c] = pending.get(c, 0.0) - delta
         for fid, d in pending.items():
