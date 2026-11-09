@@ -1,0 +1,17 @@
+id: height-gap-8
+title: "Taller by at least 8 cm"
+description: "How often does the taller fighter win?"
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: diff_height_cm
+    op: ">="
+    value: 8
+outcome: won
+compare_to: baseline_50
+sweep:
+  feature: diff_height_cm
+  from: 2
+  to: 16
+  step: 2

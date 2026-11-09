@@ -1,0 +1,15 @@
+id: age-35-lighter
+title: "Age 35+ versus under 35: welterweight and lighter"
+description: "Compare older fighters with younger opponents in divisions up to welterweight."
+population:
+  divisions: [flyweight, bantamweight, featherweight, lightweight, welterweight, w_strawweight, w_flyweight, w_bantamweight, w_featherweight]
+  date_from: 2010-01-01
+condition:
+  - feature: self_age_years
+    op: ">="
+    value: 35
+  - feature: opp_age_years
+    op: "<"
+    value: 35
+outcome: won
+compare_to: baseline_50

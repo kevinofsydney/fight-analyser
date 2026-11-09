@@ -22,6 +22,8 @@ _DEFAULT_EXCLUDE: tuple[Exclusion, ...] = ("draw", "no_contest", "dq")
 _EXTRA_FEATURES = {
     "self_southpaw",
     "opp_southpaw",
+    "self_orthodox",
+    "opp_orthodox",
     "self_moving_division",
     "self_short_notice",
     "opp_short_notice",

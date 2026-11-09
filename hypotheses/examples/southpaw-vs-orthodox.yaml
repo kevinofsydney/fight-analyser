@@ -1,0 +1,15 @@
+id: southpaw-vs-orthodox
+title: "Southpaw versus orthodox"
+description: "Uses the recorded fighter stance, which may not reflect historical changes."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_southpaw
+    op: "=="
+    value: 1
+  - feature: opp_orthodox
+    op: "=="
+    value: 1
+outcome: won
+compare_to: baseline_50

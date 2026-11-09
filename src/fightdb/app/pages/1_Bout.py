@@ -232,7 +232,7 @@ st.subheader("Side by side (before this fight)")
 show_adjusted = st.toggle("Include adjusted (shrunk) stats", value=False)
 rows = []
 for stat in STATS:
-    if stat.group == "Adjusted" and not show_adjusted:
+    if (stat.group == "Adjusted" and not show_adjusted) or f"self_{stat.key}" not in a.index:
         continue
     va, vb = num(a.get(f"self_{stat.key}")), num(b.get(f"self_{stat.key}"))
     edge = ""
@@ -258,6 +258,10 @@ tape = pd.DataFrame(rows)
 st.dataframe(tape, hide_index=True, width="stretch", height=min(38 * (len(tape) + 1), 1400))
 st.caption(
     f"Reach difference: {a.fighter_name} {components.fmt_diff_cm(num(a.diff_reach_cm))}. Stances: {a.self_stance or '?'} vs {b.self_stance or '?'}."
+)
+
+st.caption(
+    "Fight-wear totals count recorded UFC fights only. Missing round statistics make totals unavailable; strikes absorbed are exposure, not a medical diagnosis."
 )
 
 # --- Matching hypotheses ---------------------------------------------------------------------

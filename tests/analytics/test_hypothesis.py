@@ -160,3 +160,15 @@ def test_matches_upcoming(con):
     m = hypothesis.matches_upcoming(con, _h())
     assert list(m["bout_id"]) == ["up-b1"]
     assert list(m["fighter_id"]) == [older]
+
+
+def test_all_saved_hypotheses_run_against_current_schema(synthetic_db):
+    from pathlib import Path
+
+    from fightdb.analytics import hypothesis, schema
+
+    saved = schema.load_all(Path("hypotheses"))
+    assert any(h.id == "old-fight-years" for _, h in saved)
+    for _, h in saved:
+        hypothesis.evaluate(synthetic_db, h)
+        hypothesis.matches_upcoming(synthetic_db, h)

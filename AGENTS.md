@@ -13,6 +13,7 @@ Rules for every coding agent (Claude, Codex, DS Flash 1017, others) and human wo
 - **Don't scrape UFCStats.com.** Its pages sit behind a bot challenge, and we don't bypass bot detection. Data comes from the sources in [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
 - **Stay in your lane.** Modify only the files your task lists under "Files owned", plus their tests. Don't edit contract files (`src/fightdb/db/schema.sql`, `src/fightdb/sources/models.py`, `src/fightdb/features/stat_meta.py`) unless your task owns them. If you need a contract change, say so in your PR description and stop.
 - **No network in tests.** Adapters are tested against `tests/fixtures/`. HTTP is mocked with `httpx.MockTransport`.
+- **Do not add the fight-wear and related hypothesis features requested in November 2026 to prediction models, or evaluate them for model improvement.** The owner excluded this work; revisit only if the owner explicitly changes that decision.
 - **No look-ahead.** Any feature for a historical bout uses only bouts dated strictly before it.
 - **Parameterised SQL only.** Never format user input into SQL strings.
 - **`make check` must pass** before you finish.

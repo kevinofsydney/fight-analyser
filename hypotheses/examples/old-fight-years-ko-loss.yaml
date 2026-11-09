@@ -1,0 +1,15 @@
+id: old-fight-years-ko-loss
+title: "Fight wear: KO/TKO loss after three 75-strike fights"
+description: "KO/TKO loss rate after repeated high-absorption UFC fights."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_wear_fights_75
+    op: ">="
+    value: 3
+  - feature: opp_wear_fights_75
+    op: "<"
+    value: 3
+outcome: lost_ko
+compare_to: complement

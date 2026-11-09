@@ -31,7 +31,12 @@ PERSPECTIVES = {
     "self": "this fighter",
     "opp": "the opponent",
 }
-feature_options = [s.key for s in STATS]
+available = set(
+    data.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'bout_sides'"
+    )["column_name"]
+)
+feature_options = [s.key for s in STATS if f"self_{s.key}" in available]
 
 with st.form("hyp"):
     st.subheader("1. Population")

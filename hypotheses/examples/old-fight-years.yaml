@@ -1,0 +1,15 @@
+id: old-fight-years
+title: "Fight wear: three 75-strike fights"
+description: "At least three previous UFC fights with 75 or more significant strikes absorbed, against an opponent below that threshold. Incomplete histories excluded."
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: self_wear_fights_75
+    op: ">="
+    value: 3
+  - feature: opp_wear_fights_75
+    op: "<"
+    value: 3
+outcome: won
+compare_to: baseline_50

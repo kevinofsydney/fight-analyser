@@ -48,6 +48,8 @@ On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src
 | **SQL** | Read-only console (no file or network access) over the DuckDB database, including `judge_rounds` (every judge's round score next to that round's stats) |
 | **Status** | Refresh runs (including data-quality failures and Wikipedia fallback days), unmatched fighters, model calibration vs the closing betting line |
 
+The Fighter page includes a fight-wear profile based on recorded UFC round statistics. It counts significant strikes and knockdowns absorbed and fights with 50+, 75+, or 100+ significant strikes absorbed. Incomplete round statistics make totals unavailable; these numbers describe recorded exposure, not a medical diagnosis. The Hypothesis Lab and saved examples can explore these measures, prior KO/TKO losses, five-round wars, division moves, and stance matchups. Division direction is unknown for debutants and catchweights. Historical stance uses the currently recorded stance and may not reflect changes over time.
+
 Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypotheses/examples/).
 
 ### Your first hypothesis in 60 seconds

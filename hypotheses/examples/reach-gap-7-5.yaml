@@ -1,0 +1,17 @@
+id: reach-gap-7-5
+title: "Reach advantage of at least 7.5 cm"
+description: "How often does the longer-reach fighter win?"
+population:
+  divisions: []
+  date_from: 2010-01-01
+condition:
+  - feature: diff_reach_cm
+    op: ">="
+    value: 7.5
+outcome: won
+compare_to: baseline_50
+sweep:
+  feature: diff_reach_cm
+  from: 2.5
+  to: 15
+  step: 2.5
