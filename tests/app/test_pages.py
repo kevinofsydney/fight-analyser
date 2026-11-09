@@ -239,7 +239,8 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert not at.exception, [e.value for e in at.exception]
         tables = [df.value for df in at.dataframe if "Bookmaker" in df.value.columns]
         assert len(tables) == 1
-        assert set(tables[0]["Decimal odds"]) == {"1.75", "2.15"}
+        assert len(tables[0]) == 1
+        assert {"1.75", "2.15"}.issubset(set(tables[0].iloc[0].astype(str)))
     finally:
         get_settings.cache_clear()
 

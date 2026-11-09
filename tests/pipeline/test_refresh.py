@@ -298,8 +298,28 @@ def test_optional_upcoming_odds_refresh_and_failure_retains_last_prices(settings
             today=TODAY,
             train_models=False,
         )
+        assert len(calls) == 1
+        assert "upcoming_odds" not in second["counts"]
+        monkeypatch.setattr(refresh, "_now", lambda: datetime(2026, 10, 30, 12))
+        third = run_refresh(
+            settings,
+            file=FIXTURES / "canon_mini.db",
+            client=client,
+            fetch_upcoming=_upcoming(),
+            today=TODAY,
+            train_models=False,
+        )
+        fourth = run_refresh(
+            settings,
+            file=FIXTURES / "canon_mini.db",
+            client=client,
+            fetch_upcoming=_upcoming(),
+            today=TODAY,
+            train_models=False,
+        )
+        assert "upcoming_odds" not in fourth["counts"]
     assert len(calls) == 2
-    assert "Upcoming odds refresh failed; previous quotes retained" in second["warnings"]
+    assert "Upcoming odds refresh failed; previous quotes retained" in third["warnings"]
     con = duckdb.connect(str(settings.db_path), read_only=True)
     try:
         assert con.execute("SELECT count(*) FROM upcoming_odds").fetchone()[0] == 2

@@ -274,20 +274,32 @@ else:
     else:
         names = {a.fighter_id: a.fighter_name, b.fighter_id: b.fighter_name}
         prices["Fighter"] = prices["fighter_id"].map(names)
-        prices["Decimal odds"] = prices["decimal_odds"].map(lambda value: f"{value:.2f}")
-        prices["Bookmaker update (UTC)"] = prices["updated_at"].map(
-            lambda value: components.fmt_date(value, with_time=True)
+        odds_table = prices.pivot_table(
+            index="bookmaker", columns="Fighter", values="decimal_odds", aggfunc="last"
         )
+        odds_table = odds_table.reindex(columns=[a.fighter_name, b.fighter_name])
+        odds_table = odds_table.map(lambda value: f"{value:.2f}" if pd.notna(value) else "—")
+        updated = (
+            prices.groupby("bookmaker")["updated_at"]
+            .max()
+            .map(lambda value: components.fmt_date(value, with_time=True))
+        )
+        odds_table["Bookmaker update (UTC)"] = updated
         st.dataframe(
-            prices[["bookmaker", "Fighter", "Decimal odds", "Bookmaker update (UTC)"]].rename(
-                columns={"bookmaker": "Bookmaker"}
-            ),
-            hide_index=True,
-            width="stretch",
+            odds_table.rename_axis("Bookmaker").reset_index(), hide_index=True, width="stretch"
         )
         st.caption(
             f"The Odds API · Australian bookmakers · last fetched {components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC. Odds may have changed since the last daily refresh."
         )
+if a.status == "scheduled":
+    st.link_button(
+        "Refresh odds via GitHub",
+        "https://github.com/kevinofsydney/fight-analyser/actions/workflows/refresh.yml",
+        help="Open the Daily refresh workflow and select Run workflow. Odds are fetched at most once per UTC day.",
+    )
+    st.caption(
+        "Run the Daily refresh workflow on GitHub to request an update; the daily odds limit still applies."
+    )
 st.caption("Prices are for comparison and are not betting advice.")
 
 # --- Win and method probabilities ---------------------------------------------------------

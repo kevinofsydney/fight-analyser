@@ -92,11 +92,17 @@ def upcoming_odds(client: httpx.Client, api_key: str) -> Any:
     logger.setLevel(logging.WARNING)
     try:
         try:
-            return get_json(
-                client,
+            response = client.get(
                 "https://api.the-odds-api.com/v4/sports/mma_mixed_martial_arts/odds",
-                {"apiKey": api_key, "regions": "au", "markets": "h2h", "oddsFormat": "decimal"},
+                params={
+                    "apiKey": api_key,
+                    "regions": "au",
+                    "markets": "h2h",
+                    "oddsFormat": "decimal",
+                },
             )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPError as exc:
             raise RuntimeError(f"Odds API request failed ({type(exc).__name__})") from None
     finally:

@@ -132,7 +132,9 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 Repo → **Actions → "Daily refresh" → Run workflow**. The first run does a full backfill (a couple of minutes). When it finishes, **Releases** should show `data-latest` with `fightdb.duckdb` attached.
 After this, it runs every day on the cron in `.github/workflows/refresh.yml`.
 
-To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions repository secret (Settings → Secrets and variables → Actions). Get a key from [The Odds API](https://the-odds-api.com/). The refresh workflow reads the secret; it is not needed in Streamlit secrets. The key was not configured as of 2026-11-09. Run the refresh manually after adding it, or wait for the next scheduled run.
+To enable upcoming bookmaker odds, add `ODDS_API_KEY` as a GitHub Actions repository secret (Settings → Secrets and variables → Actions). Get a key from [The Odds API](https://the-odds-api.com/). The refresh workflow reads the secret; it is not needed in Streamlit secrets. The app itself never calls The Odds API. The workflow makes at most one request per UTC calendar day, including manual runs: a release marker is reserved before the attempt so a failed refresh or retry does not spend another request that day. The local refresh also records daily attempts in its database. Separate installations do not share their local guards. Failed or empty requests are not retried until the next UTC day.
+
+The Bout page links to the Daily refresh workflow: choose **Run workflow** there to request a refresh. If odds were already attempted that UTC day, the refresh updates other data but does not poll odds again. The manual run is not an instant refresh of the hosted app: it builds and publishes the database, and Streamlit may use its cached database for up to `DB_MAX_AGE_HOURS` (12 hours by default). The request uses Australian bookmakers and one head-to-head market, usually one API credit per non-empty response; [The Odds API documents the quota](https://the-odds-api.com/liveapi/guides/v4/).
 
 **B4. Deploy the app**
 1. Go to https://share.streamlit.io and sign in with GitHub.

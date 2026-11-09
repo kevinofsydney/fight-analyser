@@ -103,7 +103,7 @@ def run_refresh(
                             con, client, today, settings, run_id, report, check_wikipedia
                         )
                 odds.init_table(con)
-                if cards and settings.odds_api_key:
+                if cards and settings.odds_api_key and odds.reserve_daily_poll(con, _now()):
                     try:
                         quotes = odds_api.parse(http.upcoming_odds(client, settings.odds_api_key))
                         report["counts"]["upcoming_odds"] = odds.store(con, quotes, _now())

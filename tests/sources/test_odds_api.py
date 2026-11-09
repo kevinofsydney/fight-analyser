@@ -116,3 +116,18 @@ def test_invalid_price_rejected():
     payload[0]["bookmakers"][0]["markets"][0]["outcomes"][0]["price"] = float("inf")
     with pytest.raises(ValidationError):
         odds_api.parse(payload)
+
+
+def test_odds_http_error_is_not_retried():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(503, request=request)
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+        pytest.raises(RuntimeError, match="Odds API request failed"),
+    ):
+        http.upcoming_odds(client, "dummy-key")
+    assert len(calls) == 1
