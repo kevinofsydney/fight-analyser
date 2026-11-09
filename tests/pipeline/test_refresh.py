@@ -247,6 +247,8 @@ def test_optional_upcoming_odds_refresh_and_failure_retains_last_prices(settings
     from datetime import datetime
 
     import fightdb.pipeline.refresh as refresh
+    from fightdb.pipeline import odds
+    from fightdb.sources import odds_api
 
     settings.odds_api_key = "dummy-test-key"
     monkeypatch.setattr(refresh, "_now", lambda: datetime(2026, 10, 29, 12))
@@ -320,8 +322,18 @@ def test_optional_upcoming_odds_refresh_and_failure_retains_last_prices(settings
         assert "upcoming_odds" not in fourth["counts"]
     assert len(calls) == 2
     assert "Upcoming odds refresh failed; previous quotes retained" in third["warnings"]
-    con = duckdb.connect(str(settings.db_path), read_only=True)
+    con = duckdb.connect(str(settings.db_path))
     try:
         assert con.execute("SELECT count(*) FROM upcoming_odds").fetchone()[0] == 2
+        assert con.execute("SELECT count(*) FROM upcoming_odds_history").fetchone()[0] == 2
+        moved = payload[0]["bookmakers"][0]["markets"][0]["outcomes"]
+        moved[0]["price"], moved[1]["price"] = 1.5, 2.6
+        odds.store(con, odds_api.parse(payload), datetime(2026, 10, 31, 12))
+        assert con.execute("SELECT count(*) FROM upcoming_odds").fetchone()[0] == 2
+        history = con.execute(
+            """SELECT fetched_at, decimal_odds FROM upcoming_odds_history
+               ORDER BY fetched_at, decimal_odds"""
+        ).fetchall()
+        assert [price for _, price in history] == [1.7, 2.2, 1.5, 2.6]
     finally:
         con.close()
