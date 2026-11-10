@@ -236,10 +236,11 @@ def test_schedule_adjustment_direction():
         }
     )
     out = ratings.adjust_for_schedule(s)
-    assert out.loc[0, "idx_str_off"] == pytest.approx(80)  # easy opponents: offence counts less
-    assert out.loc[0, "idx_str_def"] == pytest.approx(
-        120
-    )  # dangerous opponents: defence counts more
+    power = ratings.SOS_POWER
+    # easy opponents: offence counts less; dangerous opponents: defence counts more
+    assert out.loc[0, "idx_str_off"] == pytest.approx(100 / 1.25**power)
+    assert out.loc[0, "idx_str_def"] == pytest.approx(100 * 1.2**power)
+    assert out.loc[0, "idx_str_off"] < 80 and out.loc[0, "idx_str_def"] > 120
     assert out.loc[1, "idx_wrest_off"] == 100 and out.loc[0, "idx_str_off_raw"] == 100
 
 
