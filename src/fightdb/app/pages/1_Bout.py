@@ -720,15 +720,32 @@ def f(v: object, fmt: str) -> str:
     return "—" if math.isnan(x) else fmt.format(x)
 
 
-st.dataframe(
-    pd.DataFrame(
-        [
-            {"Projection": lab, a.fighter_name: f(a[k], fm), b.fighter_name: f(b[k], fm)}
-            for lab, k, fm in proj_rows
-        ]
-    ),
-    hide_index=True,
-    width="stretch",
+proj_table = [
+    {"Projection": lab, a.fighter_name: f(a[k], fm), b.fighter_name: f(b[k], fm)}
+    for lab, k, fm in proj_rows
+]
+# A fighter's projected takedown defence is whatever share of the opponent's attempts fail.
+proj_table.insert(
+    3,
+    {
+        "Projection": "Takedown defence (vs this opponent)",
+        a.fighter_name: f(1 - num(b.self_p_td_success), "{:.0%}"),
+        b.fighter_name: f(1 - num(a.self_p_td_success), "{:.0%}"),
+    },
+)
+proj_table.insert(
+    4,
+    {
+        "Projection": "Takedown defence (career, adjusted)",
+        a.fighter_name: f(a.get("self_td_def_s"), "{:.0%}"),
+        b.fighter_name: f(b.get("self_td_def_s"), "{:.0%}"),
+    },
+)
+st.dataframe(pd.DataFrame(proj_table), hide_index=True, width="stretch")
+st.caption(
+    "Takedown defence vs this opponent is 1 − the opponent's projected takedown success chance. "
+    "Career defence is the share of opponents' takedown attempts stopped, adjusted towards the "
+    "division average when there is little UFC data."
 )
 with st.expander("Show the maths (takedowns)"):
     snap = data.query("SELECT * FROM fighter_snapshots WHERE bout_id = ?", [bout_id]).set_index(

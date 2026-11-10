@@ -58,3 +58,40 @@ def test_result_and_likely_outcomes():
     assert explain.likely_outcomes(a, b.drop("self_p_win_ko")) is None or math.isnan(
         float(b.get("self_p_win_ko", math.nan))
     )
+
+
+def test_value_picks_choose_the_side_above_the_market_and_settle_a_dollar():
+    from fightdb.app import value
+
+    bouts = pd.DataFrame(
+        {
+            "bout_id": ["1", "2", "3", "4"],
+            "status": ["completed", "completed", "completed", "scheduled"],
+            "fighter_name": ["A", "C", "E", "G"],
+            "opp_name": ["B", "D", "F", "H"],
+            "p": [0.60, 0.30, 0.52, 0.70],
+            "market_p": [0.50, 0.45, 0.50, 0.60],
+            "best_a": [2.1, 3.0, 2.0, 1.7],
+            "best_b": [1.9, 1.5, 1.9, 2.4],
+            "won": [1.0, 0.0, 0.0, None],
+            "lost": [0.0, 0.0, 1.0, None],
+            "draw": [0.0, 1.0, 0.0, None],
+            "no_contest": [0.0, 0.0, 0.0, None],
+        }
+    )
+    picks = value.add_picks(bouts, 0.05)
+    assert [x if isinstance(x, str) else None for x in picks["pick"]] == ["A", "D", None, "G"]
+    assert picks["price"].iloc[0] == 2.1 and picks["price"].iloc[1] == 1.5
+    assert picks["edge"].iloc[1] == pytest.approx(0.15)
+    assert picks["pick_p"].iloc[1] == pytest.approx(0.70)
+    assert picks["expected_return"].iloc[0] == pytest.approx(0.6 * 2.1 - 1)
+    assert picks["outcome"].tolist() == ["Won", "Void", "", ""]
+    assert picks["profit"].iloc[0] == pytest.approx(1.1) and picks["profit"].iloc[1] == 0
+    summary = value.summarise(picks)
+    assert summary == {
+        "picks": 3,
+        "settled": 2,
+        "won": 1,
+        "profit": pytest.approx(1.1),
+        "return": pytest.approx(1.1),
+    }

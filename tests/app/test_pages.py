@@ -113,6 +113,11 @@ def test_past_bout_shows_elo_and_round_stats(db):
         "Opponent Elo" in df.value.columns and "Change" in df.value.columns for df in at.dataframe
     ) or any("No earlier UFC fights" in c.value for c in at.caption)
     assert any(h.value == "Fight statistics by round" for h in at.subheader)
+    projections = next(df.value for df in at.dataframe if "Projection" in df.value.columns)
+    assert {
+        "Takedown defence (vs this opponent)",
+        "Takedown defence (career, adjusted)",
+    } <= set(projections["Projection"])
 
 
 def test_fighter_wear_profile_renders(db):
@@ -121,7 +126,7 @@ def test_fighter_wear_profile_renders(db):
     con = duckdb.connect(str(db), read_only=True)
     fighter_id = con.execute("SELECT fighter_id FROM bout_sides LIMIT 1").fetchone()[0]
     con.close()
-    at = AppTest.from_file(str(APP / "pages" / "7_Fighter.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "8_Fighter.py"), default_timeout=120)
     at.session_state["fighter_selector"] = fighter_id
     at.run()
     assert not at.exception, [e.value for e in at.exception]
@@ -139,7 +144,7 @@ def test_fighter_wear_profile_renders(db):
 def test_hypothesis_date_allows_recent_start(db):
     from datetime import date
 
-    at = AppTest.from_file(str(APP / "pages" / "5_Hypothesis_Lab.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "6_Hypothesis_Lab.py"), default_timeout=120)
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert at.date_input[0].max == date.today()
@@ -179,7 +184,7 @@ def test_bout_reset_opens_next_event_main_fight(db, tmp_path, monkeypatch):
 
 
 def test_saved_hypothesis_shows_matching_fights(db):
-    at = AppTest.from_file(str(APP / "pages" / "6_Saved_Hypotheses.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "7_Saved_Hypotheses.py"), default_timeout=120)
     at.session_state["hypothesis_1"] = True
     at.run()
     assert not at.exception, [e.value for e in at.exception]
@@ -352,7 +357,7 @@ def test_chart_groups_count_each_bout_once_and_preserve_wins():
 
     from fightdb.analytics import stats
 
-    page = APP / "pages" / "6_Saved_Hypotheses.py"
+    page = APP / "pages" / "7_Saved_Hypotheses.py"
     module = ast.parse(page.read_text(encoding="utf-8"))
     function = next(
         node
@@ -523,3 +528,53 @@ def test_model_performance_page_reports_backtest_and_inputs(db):
     assert any("Return per $1" in df.value.columns for df in at.dataframe) or any(
         "No fights with both closing odds" in c.value for c in at.caption
     )
+
+
+def test_value_picks_shows_a_past_card_with_results(db, tmp_path, monkeypatch):
+    import shutil
+
+    import duckdb
+
+    path = tmp_path / "value.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id = con.execute(
+        """SELECT event_id FROM bout_sides WHERE status = 'completed' AND self_p_win IS NOT NULL
+           GROUP BY event_id ORDER BY count(*) DESC LIMIT 1"""
+    ).fetchone()[0]
+    sides = con.execute(
+        """SELECT bout_id, fighter_id, opp_id, self_p_win FROM bout_sides
+           WHERE event_id = ? AND is_a AND self_p_win IS NOT NULL""",
+        [event_id],
+    ).fetchall()
+    for bout_id, fighter, opp, p in sides:
+        # The market sits 20 points away from the model, so every bout has a pick.
+        market = p - 0.2 if p >= 0.25 else p + 0.2
+        for fid, implied, american in ((fighter, market, 150), (opp, 1 - market, -170)):
+            con.execute(
+                "INSERT INTO odds (bout_id, fighter_id, close_low, close_high, implied_prob_close) VALUES (?, ?, ?, ?, ?)",
+                [bout_id, fid, american, american, implied],
+            )
+            con.execute(
+                "UPDATE bout_sides SET self_implied_prob = ? WHERE bout_id = ? AND fighter_id = ?",
+                [implied, bout_id, fid],
+            )
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "pages" / "5_Value_Picks.py"), default_timeout=120)
+        at.session_state["vp_event"] = event_id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        card = next(df.value for df in at.dataframe if "Model pick" in df.value.columns)
+        assert len(card) == len(sides)
+        assert card["Price"].isin(["2.50", f"{1 + 100 / 170:.2f}"]).all()
+        assert set(card["Pick"]) <= {"✓ Won", "✗ Lost", "Void"}
+        labels = {m.label for m in at.metric}
+        assert {"Model picks", "Picks won", "Profit / loss"} <= labels
+        assert any("Track record" in w.value for w in at.warning)
+        cards = next(df.value for df in at.dataframe if "Return per $1" in df.value.columns)
+        assert len(cards) >= 1
+    finally:
+        get_settings.cache_clear()

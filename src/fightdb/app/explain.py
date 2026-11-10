@@ -98,14 +98,14 @@ def render_win_breakdown(
     if not chart_rows.empty:
         st.altair_chart(
             alt.Chart(chart_rows)
-            .mark_bar(cornerRadiusEnd=4, height=14)
+            .mark_bar(cornerRadiusEnd=4, height={"band": 0.7})
             .encode(
                 x=alt.X("Push:Q", title=f"Push (← {opp_name} · {self_name} →)"),
                 y=alt.Y(
                     "Factor:N",
                     sort=list(chart_rows["Factor"]),
                     title=None,
-                    axis=alt.Axis(labelLimit=320),
+                    axis=alt.Axis(labelLimit=320, labelOverlap=False),
                 ),
                 color=alt.Color(
                     "Favours:N",
@@ -121,7 +121,7 @@ def render_win_breakdown(
                     alt.Tooltip("Push:Q", format="+.2f"),
                 ],
             )
-            .properties(height=max(120, 26 * len(chart_rows))),
+            .properties(height=alt.Step(28)),
             width="stretch",
         )
     st.dataframe(
