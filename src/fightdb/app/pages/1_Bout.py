@@ -227,10 +227,46 @@ st.dataframe(
 )
 
 if a.status == "completed":
-    winner = a.fighter_name if a.won == 1 else b.fighter_name if b.won == 1 else None
-    st.success(
-        f"Result: {winner + ' won' if winner else 'No winner'} · {a.method or ''} · round {a.end_round}"
-    )
+    st.subheader("Prediction vs result")
+    predicted, happened = st.columns(2)
+    outcomes = explain.likely_outcomes(a, b)
+    with predicted:
+        st.markdown("**Model before the fight**")
+        if outcomes is None:
+            st.caption("No model prediction for this bout: the backtest starts in 2012.")
+        else:
+            fav, fav_p = (
+                (a, num(a.self_p_win)) if num(a.self_p_win) >= 0.5 else (b, num(b.self_p_win))
+            )
+            st.markdown(f"Favourite: **{fav.fighter_name}**, {fav_p:.0%} to win")
+            top = outcomes.iloc[0]
+            st.markdown(f"Most likely ending: **{top['label']}** ({top['p']:.0%})")
+            market = num(a.self_implied_prob)
+            if not math.isnan(market):
+                mfav = a if market >= 0.5 else b
+                st.caption(
+                    f"Bookmakers' closing favourite: {mfav.fighter_name} "
+                    f"({max(market, 1 - market):.0%})."
+                )
+    with happened:
+        st.markdown("**What happened**")
+        st.markdown(explain.result_text(a, b))
+        if outcomes is not None and (num(a.won) == 1 or num(b.won) == 1):
+            winner = a if num(a.won) == 1 else b
+            winner_p = num(winner.self_p_win)
+            if winner_p >= 0.5:
+                st.success(f"The model picked the winner ({winner_p:.0%}).")
+            else:
+                st.error(
+                    f"Upset by the model's numbers: it gave {winner.fighter_name} {winner_p:.0%}."
+                )
+            actual = explain.actual_outcome(a, b)
+            if actual is not None:
+                rank = int(outcomes.index[outcomes["key"] == actual][0]) + 1
+                st.caption(
+                    f"The actual ending was the model's #{rank} of 6 most likely "
+                    f"({float(outcomes.loc[outcomes['key'] == actual, 'p'].iloc[0]):.0%})."
+                )
 
 ELO_HELP = (
     f"Every fighter starts at {ratings.ELO_START:.0f}. After each UFC fight, Elo changes by "
@@ -346,6 +382,29 @@ if a.status == "completed":
     st.caption(
         "Historical closing price range from fight-canon-db; availability varies by fight and bookmaker."
     )
+    best = [
+        components.decimal_odds_from_american(
+            max(closing.loc[s.fighter_id, ["close_low", "close_high"]].dropna(), default=None)
+        )
+        if s.fighter_id in closing.index
+        else None
+        for s in (a, b)
+    ]
+    market = [num(a.self_implied_prob), num(b.self_implied_prob)]
+    if not any(math.isnan(m) for m in market) and not math.isnan(num(a.self_p_win)):
+        st.markdown("**Model vs bookmakers (closing)**")
+        st.dataframe(
+            explain.edge_table(
+                [str(a.fighter_name), str(b.fighter_name)],
+                [num(a.self_p_win), num(b.self_p_win)],
+                market,
+                [math.nan if o is None else o for o in best],
+            ),
+            hide_index=True,
+            width="stretch",
+            column_config=explain.EDGE_COLUMNS,
+        )
+        st.caption(explain.EDGE_NOTE)
 else:
     if prices.empty:
         st.caption("No upcoming bookmaker odds are available for this fight yet.")
@@ -369,6 +428,25 @@ else:
         st.caption(
             f"The Odds API · Australian bookmakers · last fetched {components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC. Odds may have changed since the last daily refresh."
         )
+        view = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
+        if view is not None and not math.isnan(num(a.self_p_win)):
+            st.markdown("**Model vs bookmakers**")
+            st.dataframe(
+                explain.edge_table(
+                    [str(a.fighter_name), str(b.fighter_name)],
+                    [num(a.self_p_win), num(b.self_p_win)],
+                    view["market_p"].tolist(),
+                    view["best_odds"].tolist(),
+                ).assign(**{"Best price at": view["best_book"].tolist()}),
+                hide_index=True,
+                width="stretch",
+                column_config=explain.EDGE_COLUMNS,
+            )
+            st.caption(
+                f"Bookmakers' chance is the median across {int(view['books'].iloc[0])} bookmakers "
+                "with their margin removed; prices whose margins look stale or broken are left "
+                "out. " + explain.EDGE_NOTE
+            )
 has_history_table = not data.query(
     "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
     ["upcoming_odds_history"],

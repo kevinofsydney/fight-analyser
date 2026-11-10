@@ -8,6 +8,7 @@ probabilities are averaged with the mirrored prediction from the other side.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -158,12 +159,21 @@ class FittedModels:
         return res
 
 
+def _decided(s: pd.DataFrame) -> pd.DataFrame:
+    return s[s["won"].isin([0, 1]) & ((s["won"] + s["lost"]) == 1)]
+
+
+def _fit_win(decided: pd.DataFrame, feats: list[str]) -> tuple[StandardScaler, LogisticRegression]:
+    ws = StandardScaler(with_mean=False).fit(_matrix(decided, feats))
+    win = LogisticRegression(C=0.5, fit_intercept=False, max_iter=2000)
+    win.fit(ws.transform(_matrix(decided, feats)), decided["won"].astype(int))
+    return ws, win
+
+
 def fit(train: pd.DataFrame) -> FittedModels:
     train = add_matchup_diffs(train)
-    decided = train[train["won"].isin([0, 1]) & ((train["won"] + train["lost"]) == 1)]
-    ws = StandardScaler(with_mean=False).fit(_matrix(decided, DIFF_FEATURES))
-    win = LogisticRegression(C=0.5, fit_intercept=False, max_iter=2000)
-    win.fit(ws.transform(_matrix(decided, DIFF_FEATURES)), decided["won"].astype(int))
+    decided = _decided(train)
+    ws, win = _fit_win(decided, DIFF_FEATURES)
 
     lab = _method_label(decided)
     m = decided[lab.notna()]
@@ -263,6 +273,60 @@ def win_contributions(model: FittedModels, side: pd.DataFrame) -> pd.DataFrame:
             "push": coef * gaps.fillna(0.0).to_numpy() / scale,
         }
     )
+
+
+IMPORTANCE_COLUMNS = [
+    "feature",
+    "log_loss_without",
+    "accuracy_without",
+    "log_loss_alone",
+    "accuracy_alone",
+    "log_loss_all",
+    "accuracy_all",
+    "log_loss_none",
+    "n",
+]
+
+
+def _walk_forward_win(decided: pd.DataFrame, feats: list[str]) -> tuple[float, float, int]:
+    """Out-of-sample (log loss, accuracy, n) of the win model on `feats`, trained on earlier
+    years only and scored once per bout (A side), as in `walk_forward`."""
+    losses, hits, n = 0.0, 0, 0
+    for y in sorted(int(v) for v in decided["year"].unique()):
+        if y < FIRST_TEST_YEAR:
+            continue
+        train, test = (
+            decided[decided["year"] < y],
+            decided[(decided["year"] == y) & decided["is_a"]],
+        )
+        if train.empty or test.empty:
+            continue
+        if feats:
+            ws, win = _fit_win(train, feats)
+            p = win.predict_proba(ws.transform(_matrix(test, feats)))[:, 1]
+        else:
+            p = np.full(len(test), 0.5)
+        p = np.clip(p, 1e-6, 1 - 1e-6)
+        y_true = test["won"].to_numpy(dtype=float)
+        losses += float(-(y_true * np.log(p) + (1 - y_true) * np.log(1 - p)).sum())
+        hits += int(((p > 0.5) == (y_true == 1)).sum())
+        n += len(test)
+    return (losses / n, hits / n, n) if n else (math.nan, math.nan, 0)
+
+
+def feature_importance(sides: pd.DataFrame) -> pd.DataFrame:
+    """How much each win-model input adds, judged out of sample: walk-forward log loss and
+    accuracy with every input, without each one, and with each one alone."""
+    done = sides[(sides["status"] == "completed") & (sides["year"] >= TRAIN_FROM_YEAR)]
+    decided = _decided(add_matchup_diffs(done))
+    ll_all, acc_all, n = _walk_forward_win(decided, DIFF_FEATURES)
+    ll_none = _walk_forward_win(decided, [])[0]
+    rows = []
+    for f in DIFF_FEATURES:
+        ll_wo, acc_wo, _ = _walk_forward_win(decided, [g for g in DIFF_FEATURES if g != f])
+        ll_al, acc_al, _ = _walk_forward_win(decided, [f])
+        rows.append((f, ll_wo, acc_wo, ll_al, acc_al, ll_all, acc_all, ll_none, n))
+    return pd.DataFrame(rows, columns=IMPORTANCE_COLUMNS)
 
 
 def _reliability(y: np.ndarray, p: np.ndarray, bins: int = 10) -> list[dict[str, float]]:

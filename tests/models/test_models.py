@@ -243,3 +243,13 @@ def test_current_snapshots_add_rows_without_changing_bout_snapshots(synthetic_db
         .assign(date=lambda d: pd.to_datetime(d["date"]))
     )
     assert current.set_index("fighter_id")["elo"].to_dict() == pytest.approx(elo_now)
+
+
+def test_feature_importance_scores_every_input_out_of_sample(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides").df()
+    imp = outcome.feature_importance(sides)
+    assert list(imp.columns) == outcome.IMPORTANCE_COLUMNS
+    assert list(imp["feature"]) == outcome.DIFF_FEATURES
+    assert (imp["n"] > 0).all()
+    assert imp["log_loss_none"].iloc[0] == pytest.approx(np.log(2))
+    assert imp[["log_loss_without", "log_loss_alone", "accuracy_alone"]].notna().all().all()

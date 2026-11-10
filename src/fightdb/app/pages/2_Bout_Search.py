@@ -9,6 +9,7 @@ from fightdb.app.freshness import reload_changed_modules
 
 reload_changed_modules()
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -70,7 +71,8 @@ if title_only:
 found = data.query(
     f"""SELECT *, count(*) OVER () AS total FROM (
             SELECT bout_id, event_date, event_name, fighter_name, opp_name, won, lost, draw,
-                   no_contest, method, method_group, end_round, division, is_title, card_order
+                   no_contest, method, method_group, end_round, division, is_title, card_order,
+                   self_p_win
             FROM bout_sides WHERE {" AND ".join(where)}
             QUALIFY row_number() OVER (PARTITION BY bout_id ORDER BY is_a DESC) = 1
         )
@@ -97,6 +99,17 @@ shown = pd.DataFrame(
         "Fighter": found["fighter_name"],
         "Opponent": found["opp_name"],
         "Winner": winner,
+        "Model favourite": np.where(
+            found["self_p_win"].isna(),
+            "—",
+            np.where(found["self_p_win"] >= 0.5, found["fighter_name"], found["opp_name"]),
+        ),
+        "Model %": np.maximum(found["self_p_win"], 1 - found["self_p_win"]),
+        "Model right?": np.where(
+            found["self_p_win"].isna() | ~((found["won"] == 1) | (found["lost"] == 1)),
+            "—",
+            np.where((found["self_p_win"] >= 0.5) == (found["won"] == 1), "✓", "✗"),
+        ),
         "Method": found["method"].fillna(found["method_group"].map(METHODS)).fillna("—"),
         "Round": found["end_round"].map(lambda r: "—" if pd.isna(r) else f"{r:.0f}"),
         "Division": found["division"].fillna("").str.replace("_", " ").str.title(),
@@ -118,10 +131,14 @@ selection = st.dataframe(
     on_select="rerun",
     selection_mode="single-row",
     key="search_results",
+    column_config={"Model %": st.column_config.NumberColumn(format="percent")},
 )
 if selection.selection.rows:
     st.session_state["bout_id"] = found.iloc[selection.selection.rows[0]]["bout_id"]
     for key in ("bout_event_selector", "bout_selector"):
         st.session_state.pop(key, None)
     st.switch_page("pages/1_Bout.py")
-st.caption("Select a bout to open it on the Bout page.")
+st.caption(
+    "Select a bout to open it on the Bout page. Model columns show the pre-fight prediction from "
+    "a model trained only on earlier years (from 2012)."
+)
