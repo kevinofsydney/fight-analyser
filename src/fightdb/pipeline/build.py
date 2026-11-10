@@ -51,6 +51,8 @@ def build_all(con: duckdb.DuckDBPyConnection, train_models: bool = True) -> dict
         final = outcome.fit(
             sides[(sides["status"] == "completed") & (sides["year"] >= outcome.TRAIN_FROM_YEAR)]
         )
+        log.info("measuring input importance (walk-forward)")
+        _write(con, "feature_importance", outcome.feature_importance(sides))
         weights = [outcome.model_weights(m, y) for y, m in yearly.items()]
         _write(con, "model_weights", pd.concat([*weights, outcome.model_weights(final, None)]))
         upcoming = (

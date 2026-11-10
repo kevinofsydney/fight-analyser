@@ -121,7 +121,7 @@ def test_fighter_wear_profile_renders(db):
     con = duckdb.connect(str(db), read_only=True)
     fighter_id = con.execute("SELECT fighter_id FROM bout_sides LIMIT 1").fetchone()[0]
     con.close()
-    at = AppTest.from_file(str(APP / "pages" / "6_Fighter.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "7_Fighter.py"), default_timeout=120)
     at.session_state["fighter_selector"] = fighter_id
     at.run()
     assert not at.exception, [e.value for e in at.exception]
@@ -139,7 +139,7 @@ def test_fighter_wear_profile_renders(db):
 def test_hypothesis_date_allows_recent_start(db):
     from datetime import date
 
-    at = AppTest.from_file(str(APP / "pages" / "4_Hypothesis_Lab.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "5_Hypothesis_Lab.py"), default_timeout=120)
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert at.date_input[0].max == date.today()
@@ -179,7 +179,7 @@ def test_bout_reset_opens_next_event_main_fight(db, tmp_path, monkeypatch):
 
 
 def test_saved_hypothesis_shows_matching_fights(db):
-    at = AppTest.from_file(str(APP / "pages" / "5_Saved_Hypotheses.py"), default_timeout=120)
+    at = AppTest.from_file(str(APP / "pages" / "6_Saved_Hypotheses.py"), default_timeout=120)
     at.session_state["hypothesis_1"] = True
     at.run()
     assert not at.exception, [e.value for e in at.exception]
@@ -207,12 +207,23 @@ def test_bout_shows_historical_closing_prices(db, tmp_path, monkeypatch):
     shutil.copyfile(db, path)
     con = duckdb.connect(str(path))
     bout_id, fighter_a, fighter_b = con.execute(
-        "SELECT bout_id, fighter_a_id, fighter_b_id FROM bouts WHERE status = 'completed' LIMIT 1"
+        """SELECT b.bout_id, b.fighter_a_id, b.fighter_b_id FROM bouts b
+           JOIN bout_sides s ON s.bout_id = b.bout_id AND s.fighter_id = b.fighter_a_id
+           WHERE b.status = 'completed' AND s.self_p_win IS NOT NULL LIMIT 1"""
     ).fetchone()
     con.execute(
         "INSERT INTO odds (bout_id, fighter_id, close_low, close_high) VALUES (?, ?, ?, ?), (?, ?, ?, ?)",
         [bout_id, fighter_a, -200, -150, bout_id, fighter_b, 120, 150],
     )
+    for fighter, implied in ((fighter_a, 0.62), (fighter_b, 0.38)):
+        con.execute(
+            "UPDATE bout_sides SET self_implied_prob = ? WHERE bout_id = ? AND fighter_id = ?",
+            [implied, bout_id, fighter],
+        )
+    p_a = con.execute(
+        "SELECT self_p_win FROM bout_sides WHERE bout_id = ? AND fighter_id = ?",
+        [bout_id, fighter_a],
+    ).fetchone()[0]
     con.close()
     monkeypatch.setenv("DB_PATH", str(path))
     get_settings.cache_clear()
@@ -223,6 +234,13 @@ def test_bout_shows_historical_closing_prices(db, tmp_path, monkeypatch):
         assert not at.exception, [e.value for e in at.exception]
         assert any("-200 to -150" in metric.value for metric in at.metric)
         assert any("+120 to +150" in metric.value for metric in at.metric)
+        edge = next(df.value for df in at.dataframe if "Bookmakers' chance" in df.value.columns)
+        assert edge["Best price"].round(4).tolist() == [round(1 + 100 / 150, 4), 2.5]
+        assert edge["Edge"].iloc[0] == pytest.approx(100 * (p_a - 0.62))
+        assert any(h.value == "Prediction vs result" for h in at.subheader)
+        assert any(
+            " won" in m.value or "Draw" in m.value or "No contest" in m.value for m in at.markdown
+        )
     finally:
         get_settings.cache_clear()
 
@@ -238,7 +256,9 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
     shutil.copyfile(db, path)
     con = duckdb.connect(str(path))
     event_id, bout_id, fighter_a, fighter_b = con.execute(
-        "SELECT event_id, bout_id, fighter_a_id, fighter_b_id FROM bouts LIMIT 1"
+        """SELECT b.event_id, b.bout_id, b.fighter_a_id, b.fighter_b_id FROM bouts b
+           JOIN bout_sides s ON s.bout_id = b.bout_id AND s.fighter_id = b.fighter_a_id
+           WHERE s.self_p_win IS NOT NULL LIMIT 1"""
     ).fetchone()
     con.execute("UPDATE events SET status='upcoming' WHERE event_id = ?", [event_id])
     con.execute("UPDATE bout_sides SET status='scheduled' WHERE bout_id = ?", [bout_id])
@@ -266,8 +286,12 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert len(tables) == 1
         assert len(tables[0]) == 1
         assert {"1.75", "2.15"}.issubset(set(tables[0].iloc[0].astype(str)))
+        edge = next(df.value for df in at.dataframe if "Bookmakers' chance" in df.value.columns)
+        overround = 1 / 1.75 + 1 / 2.15
+        assert edge["Bookmakers' chance"].iloc[0] == pytest.approx(1 / 1.75 / overround)
+        assert edge["Best price"].tolist() == [1.75, 2.15]
         assert any(m.value == "**Betting line movement**" for m in at.markdown)
-        assert len(at.get("vega_lite_chart")) == 1
+        assert sum("fetched_at" in c.proto.spec for c in at.get("vega_lite_chart")) == 1
     finally:
         get_settings.cache_clear()
 
@@ -328,7 +352,7 @@ def test_chart_groups_count_each_bout_once_and_preserve_wins():
 
     from fightdb.analytics import stats
 
-    page = APP / "pages" / "5_Saved_Hypotheses.py"
+    page = APP / "pages" / "6_Saved_Hypotheses.py"
     module = ast.parse(page.read_text(encoding="utf-8"))
     function = next(
         node
@@ -486,3 +510,16 @@ def test_matchup_projects_any_two_fighters_and_explains_it(db):
     assert len(wins) == 2 and abs(sum(wins) - 100) <= 1
     assert any(m.value.startswith("**Total push") for m in at.markdown)
     assert any(h.value.startswith("Why the model favours") for h in at.subheader)
+
+
+def test_model_performance_page_reports_backtest_and_inputs(db):
+    at = AppTest.from_file(str(APP / "pages" / "4_Model_Performance.py"), default_timeout=120)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    labels = {m.label for m in at.metric}
+    assert {"Fights scored", "Model picked the winner", "Brier score"} <= labels
+    inputs = next(df.value for df in at.dataframe if "Lost if removed" in df.value.columns)
+    assert len(inputs) == 16
+    assert any("Return per $1" in df.value.columns for df in at.dataframe) or any(
+        "No fights with both closing odds" in c.value for c in at.caption
+    )

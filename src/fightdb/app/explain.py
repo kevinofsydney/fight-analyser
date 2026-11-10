@@ -151,3 +151,144 @@ def render_win_breakdown(
         "division average (100); projected numbers are per round against this opponent. "
         "Not betting advice."
     )
+
+
+# A two-way price whose implied chances add up to less than 100% or more than 115% is stale or
+# broken (e.g. an exchange quoting 1.02 on both fighters), so it is left out of the market view.
+MAX_OVERROUND = 1.15
+
+
+def market_view(prices: pd.DataFrame, fighter_ids: list[str]) -> pd.DataFrame | None:
+    """Per fighter: the bookmakers' vig-free chance (median across usable books), the best price
+    and who offers it. `prices` has bookmaker, fighter_id, decimal_odds."""
+    wide = prices.pivot_table(
+        index="bookmaker", columns="fighter_id", values="decimal_odds", aggfunc="last"
+    ).reindex(columns=fighter_ids)
+    wide = wide.dropna()
+    if wide.empty:
+        return None
+    inverse = 1 / wide
+    overround = inverse.sum(axis=1)
+    usable = (overround >= 1.0) & (overround <= MAX_OVERROUND)
+    if not usable.any():
+        return None
+    fair = inverse[usable].div(overround[usable], axis=0)
+    best = wide[usable]
+    return pd.DataFrame(
+        {
+            "market_p": fair.median(),
+            "best_odds": best.max(),
+            "best_book": best.idxmax(),
+            "books": int(usable.sum()),
+        }
+    )
+
+
+def edge_table(
+    names: list[str], model_p: list[float], market_p: list[float], best_odds: list[float]
+) -> pd.DataFrame:
+    """Model chance vs the bookmakers' vig-free chance, per fighter."""
+    rows = []
+    for name, p, m, odds in zip(names, model_p, market_p, best_odds, strict=True):
+        rows.append(
+            {
+                "Fighter": name,
+                "Model chance": p,
+                "Model fair odds": 1 / p if p > 0 else math.nan,
+                "Bookmakers' chance": m,
+                "Best price": odds,
+                "Edge": 100 * (p - m),
+                "Expected return per $1": p * odds - 1 if not math.isnan(odds) else math.nan,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+EDGE_COLUMNS = {
+    "Model chance": st.column_config.NumberColumn(format="percent"),
+    "Model fair odds": st.column_config.NumberColumn(
+        format="%.2f", help="1 ÷ model chance: the decimal price at which a bet breaks even."
+    ),
+    "Bookmakers' chance": st.column_config.NumberColumn(
+        format="percent",
+        help="The chance implied by the bookmakers' prices with their margin removed.",
+    ),
+    "Best price": st.column_config.NumberColumn(format="%.2f"),
+    "Edge": st.column_config.NumberColumn(
+        format="%+.1f pts",
+        help="Model chance minus bookmakers' chance, in percentage points. Positive means the "
+        "model rates the fighter higher than the market does.",
+    ),
+    "Expected return per $1": st.column_config.NumberColumn(
+        format="%+.2f",
+        help="Model chance × best price − 1: what a $1 bet would return on average if the model's "
+        "chance were right.",
+    ),
+}
+
+
+EDGE_NOTE = (
+    "In the backtest the bookmakers' closing lines have been more accurate than this model (see "
+    "Model performance), so a large edge more often means the model is missing something than "
+    "that the price is wrong. Not betting advice."
+)
+METHOD_NAMES = {"ko": "KO/TKO", "sub": "submission", "dec": "decision"}
+_METHOD_GROUP_KEY = {"ko_tko": "ko", "sub": "sub", "dec": "dec"}
+
+
+def _num(value: object) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except TypeError, ValueError:
+        return math.nan
+
+
+def likely_outcomes(a: pd.Series, b: pd.Series) -> pd.DataFrame | None:
+    """The six possible endings (who wins, how) with the model's chances, most likely first."""
+    rows = []
+    for side, tag in ((a, "a"), (b, "b")):
+        for method in ("ko", "sub", "dec"):
+            p = _num(side.get(f"self_p_win_{method}"))
+            if math.isnan(p):
+                return None
+            rows.append(
+                {
+                    "key": f"{tag}_{method}",
+                    "label": f"{side.fighter_name} by {METHOD_NAMES[method]}",
+                    "p": p,
+                }
+            )
+    return pd.DataFrame(rows).sort_values("p", ascending=False).reset_index(drop=True)
+
+
+def actual_outcome(a: pd.Series, b: pd.Series) -> str | None:
+    method = _METHOD_GROUP_KEY.get(str(a.get("method_group")))
+    if method is None:
+        return None
+    if _num(a.get("won")) == 1:
+        return f"a_{method}"
+    if _num(b.get("won")) == 1:
+        return f"b_{method}"
+    return None
+
+
+def result_text(a: pd.Series, b: pd.Series) -> str:
+    """e.g. 'Jon Jones won by Submission in round 1 at 2:04.'"""
+    method = str(a.get("method") or "").strip()
+    end_round = _num(a.get("end_round"))
+    seconds = _num(a.get("fight_seconds"))
+    when = ""
+    if not math.isnan(end_round):
+        when = f" in round {end_round:.0f}"
+        in_round = seconds - (end_round - 1) * 300
+        if not math.isnan(in_round) and 0 < in_round <= 300:
+            when += f" at {int(in_round) // 60}:{int(in_round) % 60:02d}"
+    how = f" by {method}" if method else ""
+    if _num(a.get("won")) == 1 or _num(b.get("won")) == 1:
+        winner = a if _num(a.get("won")) == 1 else b
+        return f"**{winner.fighter_name}** won{how}{when}."
+    if _num(a.get("draw")) == 1:
+        return f"**Draw**{how}{when}."
+    if _num(a.get("no_contest")) == 1:
+        return f"**No contest**{when}."
+    return "Result not recorded."
