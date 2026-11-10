@@ -117,6 +117,11 @@ def add_indices(s: pd.DataFrame) -> pd.DataFrame:
 
 
 SCHEDULE_ADJUSTED = ("idx_str_off", "idx_str_def", "idx_wrest_off", "idx_wrest_def")
+# The schedule factors are averages of opponents' shrunk numbers, themselves shrunk towards 1.0,
+# so they understate how soft or hard a schedule was. Squaring them gave the lowest walk-forward
+# log loss (1.0 vs 1.5 / 2 / 3: 0.6556, 0.6550, 0.6548, 0.6552 on 2012+; 0.6452 vs 0.6437 at 2
+# on 2020+) and kept every calibration gate passing.
+SOS_POWER = 2.0
 
 
 def adjust_for_schedule(s: pd.DataFrame) -> pd.DataFrame:
@@ -129,8 +134,8 @@ def adjust_for_schedule(s: pd.DataFrame) -> pd.DataFrame:
     s = s.copy()
     for c in SCHEDULE_ADJUSTED:
         s[f"{c}_raw"] = s[c]
-    s["idx_str_off"] = s["idx_str_off"] / s["sos_str_leak"]
-    s["idx_str_def"] = s["idx_str_def"] * s["sos_str_threat"]
-    s["idx_wrest_off"] = s["idx_wrest_off"] / s["sos_td_leak"]
-    s["idx_wrest_def"] = s["idx_wrest_def"] * s["sos_td_threat"]
+    s["idx_str_off"] = s["idx_str_off"] / s["sos_str_leak"] ** SOS_POWER
+    s["idx_str_def"] = s["idx_str_def"] * s["sos_str_threat"] ** SOS_POWER
+    s["idx_wrest_off"] = s["idx_wrest_off"] / s["sos_td_leak"] ** SOS_POWER
+    s["idx_wrest_def"] = s["idx_wrest_def"] * s["sos_td_threat"] ** SOS_POWER
     return s

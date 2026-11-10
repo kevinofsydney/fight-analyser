@@ -116,3 +116,15 @@ Other promotions (PFL, ONE), gradient-boosted models, live fight-night updates, 
 | #11 | Historical closing odds display and optional daily Australian bookmaker quotes from The Odds API. |
 | #12 | Selecting a Home card row opens the corresponding Bout page. |
 | #13 | Side-by-side Bout cards with ESPN portraits when available, current records, odds and physical details. Rank, weigh-in weight and gym remain unavailable. |
+
+## Win-model experiments on 2026-11-10
+
+Walk-forward win model, A side of each decided bout. Log loss 2012+ / 2020+ (baseline 0.6556 / 0.6452). The closing line's Brier score is 0.2096 on the same rows.
+
+| Tried | Result |
+|-------|--------|
+| Opponent adjustment squared (`ratings.SOS_POWER = 2`) | **Shipped.** 0.6548 / 0.6437, accuracy 60.9% → 61.2% / 62.0% → 62.4%; every calibration gate still passes. 1.5 and 3 were close; 0 (no adjustment) was worst (0.6583). |
+| Stronger or weaker shrinkage (k × 0.5, 2, 4) | No change (±0.0007). The estimated priors are about right. |
+| Recency weighting (4-year half-life) on top of the above | 0.6540 / 0.6440, better, but the KO and decision gates then fail. Their top bins (KO 0.3–0.4, decision 0.4–0.5) were already under-confident and slipped past the 5-point limit, so those labels would disappear. Not shipped. Worth retrying once the method split's under-confidence is fixed (stronger method-model C did not help). |
+| Age hinges (over 30 / 32 / 34), logistic C 0.05–5 | No change. |
+| Gradient boosting (HistGradientBoosting, mirrored for symmetry) | Worse on 2020+ (0.6490+). Its apparent gain on 2012+ came from **missing reach**: fighters with no recorded reach win 4–6% of bouts before 2020 because short careers never got measured. That is hindsight, not a usable signal. Don't add missing-value flags for profile fields. |
