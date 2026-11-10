@@ -207,7 +207,7 @@ else:
     )
     st.altair_chart(
         alt.Chart(table)
-        .mark_bar(cornerRadiusEnd=4, height=14, color=COLORS[0])
+        .mark_bar(cornerRadiusEnd=4, height={"band": 0.7}, color=COLORS[0])
         .encode(
             x=alt.X(
                 "Lost if removed:Q",
@@ -215,7 +215,10 @@ else:
                 axis=alt.Axis(format="%"),
             ),
             y=alt.Y(
-                "Input:N", sort=list(table["Input"]), title=None, axis=alt.Axis(labelLimit=320)
+                "Input:N",
+                sort=list(table["Input"]),
+                title=None,
+                axis=alt.Axis(labelLimit=320, labelOverlap=False),
             ),
             tooltip=[
                 "Input:N",
@@ -224,7 +227,7 @@ else:
                 alt.Tooltip("Accuracy on its own:Q", format=".1%"),
             ],
         )
-        .properties(height=26 * len(table)),
+        .properties(height=alt.Step(28)),
         width="stretch",
     )
     st.dataframe(
