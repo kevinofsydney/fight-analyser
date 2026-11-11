@@ -45,6 +45,33 @@ STATS: tuple[Stat, ...] = (
         "win_pct", "UFC win %", "Record", "%", True, "{:.0%}", "Wins / (wins + losses) in the UFC"
     ),
     Stat(
+        "pro_fights",
+        "Pro fights",
+        "Record",
+        "fights",
+        None,
+        "{:.0f}",
+        "Recorded pro fights before this bout, any promotion (draws count, no contests don't)",
+    ),
+    Stat(
+        "pro_win_pct",
+        "Pro win % (regressed)",
+        "Record",
+        "%",
+        True,
+        "{:.0%}",
+        "Pro wins / pro fights in any promotion, pulled towards 50% for short records",
+    ),
+    Stat(
+        "pro_elo",
+        "All-promotion Elo",
+        "Record",
+        "pts",
+        True,
+        "{:.0f}",
+        "Results-based rating over every recorded pro fight, any promotion (1500 = first fight)",
+    ),
+    Stat(
         "streak",
         "Streak",
         "Record",

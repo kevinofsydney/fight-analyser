@@ -122,6 +122,20 @@ class JudgeScore(_Record):
     source: str | None = None
 
 
+class ProFight(_Record):
+    """One pro MMA result from any promotion (UFC included). Feeds the all-promotion rating only.
+
+    Fighters without a UFC bout keep the source's own ID ("fc-fighter:<n>")."""
+
+    fight_id: str
+    date: date
+    promotion: str | None = None
+    fighter_a_id: str
+    fighter_b_id: str
+    result_a: Literal["W", "L", "D"]
+    is_finish: bool = False
+
+
 class HistoryBundle(BaseModel):
     """Everything a history adapter yields in one import."""
 
@@ -134,6 +148,7 @@ class HistoryBundle(BaseModel):
     rounds: list[RoundStats] = []
     odds: list[OddsLine] = []
     judge_scores: list[JudgeScore] = []
+    pro_fights: list[ProFight] = []
 
 
 class UpcomingFighter(_Record):

@@ -97,6 +97,61 @@ def compute_elo(bouts: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
     return pd.DataFrame(rows, columns=["bout_id", "fighter_id", "elo"]), ratings
 
 
+# All-promotion rating. K starts high and settles as a fighter's record grows, so a prospect's
+# rating moves quickly through the regional scene and a veteran's does not swing on one result.
+# Walk-forward win-model log loss 2012+: UFC-only Elo 0.6548, this at a flat K of 32 0.6504,
+# with the early boost 0.6468 (see NEXT_TASKS.md, 2026-11-11).
+PRO_K = 20.0
+PRO_K_EARLY = 40.0
+PRO_K_FADE_FIGHTS = 10.0
+PRO_COLUMNS = ["fighter_id", "date", "pro_elo", "pro_fights", "pro_wins"]
+
+
+def compute_pro_ratings(fights: pd.DataFrame) -> pd.DataFrame:
+    """Elo and record over every pro fight, any promotion.
+
+    `fights` needs: date, fighter_a_id, fighter_b_id, result_a ('W' | 'L' | 'D'), is_finish.
+    Returns one row per fighter per fight day with their rating and record *after* that day;
+    join strictly-earlier rows to get the pre-fight state. Same-day fights all use ratings from
+    before that day.
+    """
+    f = fights.sort_values(["date", "fighter_a_id", "fighter_b_id"])
+    elo: dict[str, float] = {}
+    n: dict[str, int] = {}
+    wins: dict[str, int] = {}
+    rows: list[tuple[str, object, float, int, int]] = []
+    pending: dict[str, list[float]] = {}
+    current: object = None
+
+    def flush() -> None:
+        for fid, (delta, fought, won) in pending.items():
+            elo[fid] = elo.get(fid, ELO_START) + delta
+            n[fid] = n.get(fid, 0) + int(fought)
+            wins[fid] = wins.get(fid, 0) + int(won)
+            rows.append((fid, current, elo[fid], n[fid], wins[fid]))
+        pending.clear()
+
+    for day, a, b, result, finish in zip(
+        f["date"], f["fighter_a_id"], f["fighter_b_id"], f["result_a"], f["is_finish"], strict=True
+    ):
+        score = ELO_SCORES.get(result)
+        if score is None:
+            continue
+        if day != current:
+            flush()
+            current = day
+        surprise = score - elo_expected(elo.get(a, ELO_START), elo.get(b, ELO_START))
+        mult = FINISH_MULT if finish else 1.0
+        for fid, sign, won in ((a, 1.0, score == 1.0), (b, -1.0, score == 0.0)):
+            k = PRO_K + PRO_K_EARLY * float(np.exp(-n.get(fid, 0) / PRO_K_FADE_FIGHTS))
+            p = pending.setdefault(fid, [0.0, 0.0, 0.0])
+            p[0] += sign * k * mult * surprise
+            p[1] += 1
+            p[2] += won
+    flush()
+    return pd.DataFrame(rows, columns=PRO_COLUMNS)
+
+
 def _ratio(num: pd.Series, den: pd.Series) -> pd.Series:
     out = 100.0 * num / den
     return out.replace([np.inf, -np.inf], np.nan)

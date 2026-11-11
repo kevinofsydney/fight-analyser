@@ -63,6 +63,8 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 | ID | Task | |
 |----|------|--|
 | M1 | **Decision-label watch.** In the method model, big favourites winning on points are under-predicted (0.5–0.6 bin: 53% predicted, 64% observed, n=47). Once that bin has 100+ fighters in the last three test years and is still off by more than 5 pp, the gate hides only the decision label. Try adding `self_p_win` as a feature to the method model and compare walk-forward log loss; keep it only if log loss improves and every method stays calibrated. | 🔴 |
+| M6 | **Link upcoming debutants to their pro history.** The all-promotion rating (below) is unknown for a scheduled fighter with no UFC bout, because ESPN names are only matched against `fighters`. Those are the bouts where the rating helps most. Match unresolved ESPN names to `fc-fighter:<n>` IDs in `pro_fights` (needs fighter names for non-UFC fighters from fight-canon-db, and care with common names). | 🔴 |
+| M7 | **KO label gate.** Since the all-promotion rating, the 0.3–0.4 "wins by KO" bin of 2024–2026 predicts 34% and observes 41% (n=197), over the 5-point limit, so the KO label is hidden. Over all test years the bin is fine (34% vs 36%), and 2026 has an unusually high KO rate (20% vs 16–17%). Adding the win model's output, weight class, sex or scheduled rounds to the method model did not close it. | 🔴 |
 | M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
 | M3 | **Multi-variable hypotheses** (PRD §10): logistic regression with covariates, so "older by 8+ years" can be tested controlling for Elo gap. Add an optional `controls:` list to the hypothesis YAML schema (a contract change in `analytics/schema.py`); report the adjusted odds ratio and CI. | 🔴 |
 | M4 | **Insight finder** (PRD §10): scan every numeric feature × outcome, report effects with Benjamini–Hochberg FDR correction. CLI first (`fightdb hypothesis scan`), page later. | 🔴 |
@@ -128,3 +130,20 @@ Walk-forward win model, A side of each decided bout. Log loss 2012+ / 2020+ (bas
 | Recency weighting (4-year half-life) on top of the above | 0.6540 / 0.6440, better, but the KO and decision gates then fail. Their top bins (KO 0.3–0.4, decision 0.4–0.5) were already under-confident and slipped past the 5-point limit, so those labels would disappear. Not shipped. Worth retrying once the method split's under-confidence is fixed (stronger method-model C did not help). |
 | Age hinges (over 30 / 32 / 34), logistic C 0.05–5 | No change. |
 | Gradient boosting (HistGradientBoosting, mirrored for symmetry) | Worse on 2020+ (0.6490+). Its apparent gain on 2012+ came from **missing reach**: fighters with no recorded reach win 4–6% of bouts before 2020 because short careers never got measured. That is hindsight, not a usable signal. Don't add missing-value flags for profile fields. |
+
+## All-promotion rating on 2026-11-11
+
+Same walk-forward test as above (log loss 2012+ / 2020+, accuracy 2012+ / 2020+). The closing line scores 0.6063 / 0.5985 on the same bouts.
+
+| Model | Log loss | Accuracy |
+|-------|----------|----------|
+| Before | 0.6548 / 0.6437 | 61.2% / 62.4% |
+| **Shipped:** + `diff_pro_elo`, `diff_pro_fights`, `diff_pro_win_pct` | **0.6402 / 0.6305** | **63.6% / 64.8%** |
+
+- **Why it works:** the model's gap to the bookmaker was largest in bouts with a UFC debutant (0.664 vs 0.569), where UFC-only inputs know nothing. Debutants have a median of 10 earlier pro fights in fight-canon-db. On those bouts log loss falls to about 0.643; bouts between two 6+ fight veterans do not change.
+- **Rating choices:** a flat K of 32 over all promotions gave 0.6504 for the rating alone; K = 20 + 40·exp(−fights/10) gave 0.6468. The second was picked from five variants on the test years, so some of its edge over the flat K is optimistic. Paired bootstrap interval for the whole change: −0.0144 [−0.0188, −0.0101].
+- **Method model:** it gets the same three inputs (log loss 1.6207 → 1.6023). The submission and decision gates pass; the KO gate fails (task M7).
+- **Versus the market:** stacked on the closing line, the old model improved log loss by 0.0013 and the new one by about 0.0025.
+- **UFC-only Elo** now carries almost no weight but stays in: the app shows it and it is the fallback when pro history is unknown.
+
+Tried at the same time, no gain (all within ±0.002, intervals spanning zero): log-ratio indices, offence × defence products, UFC win %, log UFC fights, age² over 30, layoff, height, pace index. "Offence minus the opponent's defence" differences are exactly a sum of two inputs the model already has. Median-filling the method model's missing finish and distance rates left log loss unchanged and broke two gates.

@@ -10,6 +10,7 @@ CORE_TABLES = [
     "bouts",
     "round_stats",
     "odds",
+    "pro_fights",
     "card_changes",
     "scrape_runs",
     "model_evals",

@@ -6,7 +6,7 @@ from fightdb.db.conn import init_db
 from fightdb.pipeline import backfill
 from tests.conftest import FIXTURES
 
-TABLES = ["events", "fighters", "bouts", "round_stats", "odds"]
+TABLES = ["events", "fighters", "bouts", "round_stats", "odds", "pro_fights"]
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ def test_import_from_file_is_idempotent(settings, source, path):
     assert bundle.bouts and not warnings
     first = _counts(con)
     assert first["bouts"] > 0 and first["round_stats"] > 0
+    assert (first["pro_fights"] > 0) == (source == "fight_canon")  # Greco has UFC fights only
     backfill.import_history(con, settings, source=source, file=FIXTURES / path)
     assert _counts(con) == first
 
