@@ -116,6 +116,18 @@ CREATE TABLE IF NOT EXISTS odds (
     PRIMARY KEY (bout_id, fighter_id)
 );
 
+-- Every pro MMA result fight-canon-db has, all promotions (UFC included). Used only for the
+-- all-promotion rating and pro record in fighter_snapshots; no stats, no events.
+CREATE TABLE IF NOT EXISTS pro_fights (
+    fight_id      VARCHAR PRIMARY KEY,
+    date          DATE NOT NULL,
+    promotion     VARCHAR,
+    fighter_a_id  VARCHAR NOT NULL,          -- fighters.fighter_id, or "fc-fighter:<n>" if never in the UFC
+    fighter_b_id  VARCHAR NOT NULL,
+    result_a      VARCHAR NOT NULL,          -- 'W' | 'L' | 'D' (no contests are left out)
+    is_finish     BOOLEAN NOT NULL DEFAULT FALSE
+);
+
 CREATE TABLE IF NOT EXISTS card_changes (
     change_id    VARCHAR PRIMARY KEY,
     detected_at  TIMESTAMP NOT NULL,

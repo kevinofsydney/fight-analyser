@@ -474,10 +474,37 @@ def build_snapshots(
         )
     s["elo"] = s["elo"].fillna(ratings.ELO_START)
 
+    s = _pro_record(con, s)
     s = ratings.add_indices(s)
     s = _strength_of_schedule(s, h)
     s = ratings.adjust_for_schedule(s)
     return s.drop(columns=["status", "opp_id"]), priors
+
+
+# Pro win % is pulled towards 50% by this many imaginary fights, so 3-0 doesn't read as 100%.
+PRO_WIN_PCT_PRIOR_FIGHTS = 10.0
+
+
+def _pro_record(con: duckdb.DuckDBPyConnection, s: pd.DataFrame) -> pd.DataFrame:
+    """All-promotion rating and pro record before each bout, from `pro_fights`.
+
+    Only fight days strictly before the bout count. A fighter with no earlier recorded pro fight
+    (or not linked to the source, e.g. an upcoming debutant) gets NaN: unknown, not a beginner.
+    """
+    fights = con.execute(
+        "SELECT date, fighter_a_id, fighter_b_id, result_a, is_finish FROM pro_fights"
+    ).df()
+    state = ratings.compute_pro_ratings(fights)
+    state = state[state["fighter_id"].isin(s["fighter_id"].unique())].copy()
+    state["fighter_id"] = state["fighter_id"].astype(s["fighter_id"].dtype)
+    state["date"] = pd.to_datetime(state["date"]).astype(s["date"].dtype)
+    cols = ["pro_elo", "pro_fights", "pro_wins"]
+    state[cols] = state[cols].astype(float)
+    got = _asof(s[["bout_id", "fighter_id", "date"]], state, by="fighter_id")
+    s = s.merge(got[["bout_id", "fighter_id", *cols]], on=["bout_id", "fighter_id"], how="left")
+    half = PRO_WIN_PCT_PRIOR_FIGHTS / 2
+    s["pro_win_pct"] = (s["pro_wins"] + half) / (s["pro_fights"] + PRO_WIN_PCT_PRIOR_FIGHTS)
+    return s.drop(columns=["pro_wins"])
 
 
 # Minutes of neutral (factor 1.0) schedule every fighter starts with, so one or two fights

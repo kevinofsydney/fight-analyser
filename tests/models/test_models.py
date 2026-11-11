@@ -253,3 +253,11 @@ def test_feature_importance_scores_every_input_out_of_sample(synthetic_db):
     assert (imp["n"] > 0).all()
     assert imp["log_loss_none"].iloc[0] == pytest.approx(np.log(2))
     assert imp[["log_loss_without", "log_loss_alone", "accuracy_alone"]].notna().all().all()
+
+
+def test_weights_saved_before_an_input_existed_give_it_no_weight(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides WHERE status = 'completed'").df()
+    weights = outcome.model_weights(outcome.fit(sides), None)
+    old = weights[~weights["feature"].str.contains("pro_")]
+    p = outcome.from_weights(old).predict(sides)
+    assert p[["p_win", "p_win_ko", "p_distance"]].notna().all().all()

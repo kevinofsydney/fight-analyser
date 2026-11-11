@@ -21,6 +21,12 @@ from fightdb.models.ratings import SCHEDULE_ADJUSTED
 
 DIFF_FEATURES = [
     "diff_elo",
+    # Rating and record over every pro fight, not just the UFC. Most of the gain is in bouts with
+    # a debutant, where the UFC-only inputs know nothing (walk-forward log loss on those bouts
+    # 0.664 -> 0.643). Unknown history is NaN, which `_matrix` turns into "no gap".
+    "diff_pro_elo",
+    "diff_pro_fights",
+    "diff_pro_win_pct",
     "diff_age_years",
     "diff_reach_cm",
     "diff_ufc_fights",
@@ -226,14 +232,19 @@ def _rebuild(
     classes = list(dict.fromkeys(w["cls"]))
     first = w[w["cls"] == classes[0]].set_index("feature").reindex(feats)
     scaler = StandardScaler(with_mean=bool((first["mean"] != 0).any()))
-    scaler.mean_ = first["mean"].to_numpy(dtype=float)
-    scaler.scale_ = first["scale"].to_numpy(dtype=float)
+    # Weights saved before an input existed (app deployed ahead of the next refresh): that input
+    # gets no weight instead of turning every probability into NaN.
+    scaler.mean_ = first["mean"].fillna(0.0).to_numpy(dtype=float)
+    scaler.scale_ = first["scale"].fillna(1.0).to_numpy(dtype=float)
     scaler.var_ = scaler.scale_**2
     scaler.n_features_in_ = len(feats)
     scaler.n_samples_seen_ = 1
     lr = LogisticRegression(fit_intercept=bool((w["intercept"] != 0).any()))
     coef = np.vstack(
-        [w[w["cls"] == c].set_index("feature").reindex(feats)["coef"].to_numpy() for c in classes]
+        [
+            w[w["cls"] == c].set_index("feature").reindex(feats)["coef"].fillna(0.0).to_numpy()
+            for c in classes
+        ]
     )
     lr.coef_ = coef
     lr.intercept_ = np.array(

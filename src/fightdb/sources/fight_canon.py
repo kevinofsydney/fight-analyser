@@ -1,4 +1,5 @@
-"""fight-canon-db (`canon.db`, SQLite) -> source-neutral records. UFC events only.
+"""fight-canon-db (`canon.db`, SQLite) -> source-neutral records. UFC events only, except
+`pro_fights`: bare results from every promotion, for the all-promotion rating.
 
 https://github.com/Jadevit/fight-canon-db. Heights and reaches are stored in inches there.
 `fight_participants.corner` is the order UFC Stats lists the fighters (0 = red from 2010-03-21);
@@ -19,6 +20,7 @@ from fightdb.sources.models import (
     HistoryBundle,
     JudgeScore,
     OddsLine,
+    ProFight,
     RoundStats,
 )
 
@@ -238,7 +240,44 @@ def _load(con: sqlite3.Connection, source_version: str | None, since: str | None
         rounds=rounds,
         odds=odds,
         judge_scores=judges,
+        pro_fights=_pro_fights(con, fight_ids, fighter_ids, since),
     )
+
+
+def _pro_fights(
+    con: sqlite3.Connection,
+    fight_ids: dict[int, str],
+    fighter_ids: dict[int, str],
+    since: str | None,
+) -> list[ProFight]:
+    has_type = any(r[1] == "bout_type" for r in con.execute("PRAGMA table_info(fights)"))
+    pro_sql = "AND (f.bout_type IS NULL OR f.bout_type = 'pro')" if has_type else ""
+    since_sql = "AND e.date >= ?" if since else ""
+    out: list[ProFight] = []
+    for fight, d, promotion, method, a, b, result in con.execute(
+        f"""SELECT f.fight_id, e.date, e.promotion, f.method, a.fighter_id, b.fighter_id, a.result
+            FROM fights f JOIN events e USING (event_id)
+            JOIN fight_participants a ON a.fight_id = f.fight_id AND a.corner = 0
+            JOIN fight_participants b ON b.fight_id = f.fight_id AND b.corner = 1
+            WHERE a.result IN ('W', 'L', 'D') AND f.no_contest = 0
+                  AND a.fighter_id <> b.fighter_id {pro_sql} {since_sql}""",
+        [since] if since else [],
+    ):
+        day = units.parse_date(d)
+        if day is None:
+            continue
+        out.append(
+            ProFight(
+                fight_id=fight_ids[fight],
+                date=day,
+                promotion=promotion,
+                fighter_a_id=fighter_ids[a],
+                fighter_b_id=fighter_ids[b],
+                result_a=result,
+                is_finish=units.method_group(method) in ("ko_tko", "sub"),
+            )
+        )
+    return out
 
 
 def _judge_scores(

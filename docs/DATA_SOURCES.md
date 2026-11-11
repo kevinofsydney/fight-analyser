@@ -36,7 +36,7 @@ The optional odds feed matches both normalized fighter names and event date with
 - **UFC coverage (verified by querying the release):** 8,971 UFC fights (1993-11-12 → 2026-10-24), 42,074 UFC round-stat rows, and **odds for 8,021 UFC fights** (opening and closing lines, 2007+).
 - **How to pull:** `curl -L -o canon.db https://github.com/jadevit/fight-canon-db/releases/latest/download/canon.db`. Every update is a release tagged `db-YYYY-MM-DD-HHMM`, so a specific version can be pinned.
 - **Pluses:** MIT licence, **stable numeric IDs** with per-source alias tables (`fighter_aliases.source = 'ufcstats'` and others), NULL means "not recorded" (not 0), a guard against publishing updates that lose rows, documented schema, and it explicitly warns that `corner` before 2010-03-21 leaks the winner.
-- **Risks:** a **young repo** (created 2026-09-27) with a single maintainer and no forks yet. It's also a big file (~150 MB) because it covers ~60k events across all promotions. We filter to `promotion = 'UFC'` when importing.
+- **Risks:** a **young repo** (created 2026-09-27) with a single maintainer and no forks yet. It's also a big file (~150 MB) because it covers ~60k events across all promotions. We filter to `promotion = 'UFC'` when importing events, bouts and stats. The one exception is `pro_fights`: bare results (date, the two fighters, result, finish or not) from every promotion, about 371k rows, used only for the all-promotion Elo and pro record.
 - **Units:** height/reach in **inches** (integers); dates are `YYYY-MM-DD` strings.
 
 ### 2. Greco1899/scrape_ufc_stats (fallback for history) ✅

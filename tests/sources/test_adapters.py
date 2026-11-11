@@ -143,3 +143,22 @@ def test_canon_judge_scores(canon, grec):
     assert bell_r1["Raoni Barcelos"] == 9
     assert all(j.score in (7, 8, 9, 10) for j in canon.judge_scores)
     assert grec.judge_scores == []  # Greco has no scorecards
+
+
+def test_canon_pro_fights_cover_every_promotion(canon):
+    promotions = {p.promotion for p in canon.pro_fights}
+    assert "UFC" in promotions and len(promotions) > 1  # the Inka card is in, as results only
+    assert all(p.result_a in ("W", "L", "D") for p in canon.pro_fights)
+    ufc = {b.bout_id: b for b in canon.bouts}
+    shared = [p for p in canon.pro_fights if p.fight_id in ufc]
+    assert shared
+    for p in shared:
+        b = ufc[p.fight_id]
+        assert (p.fighter_a_id, p.fighter_b_id, p.result_a) == (
+            b.fighter_a_id,
+            b.fighter_b_id,
+            b.result_a,
+        )
+        assert p.is_finish == (b.method_group in ("ko_tko", "sub"))
+    no_contests = {b.bout_id for b in canon.bouts if b.result_a == "NC"}
+    assert no_contests and not no_contests & {p.fight_id for p in canon.pro_fights}
