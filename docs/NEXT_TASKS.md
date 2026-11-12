@@ -147,3 +147,9 @@ Same walk-forward test as above (log loss 2012+ / 2020+, accuracy 2012+ / 2020+)
 - **UFC-only Elo** now carries almost no weight but stays in: the app shows it and it is the fallback when pro history is unknown.
 
 Tried at the same time, no gain (all within ±0.002, intervals spanning zero): log-ratio indices, offence × defence products, UFC win %, log UFC fights, age² over 30, layoff, height, pace index. "Offence minus the opponent's defence" differences are exactly a sum of two inputs the model already has. Median-filling the method model's missing finish and distance rates left log loss unchanged and broke two gates.
+
+## My picks on 2026-11-12
+
+| ID | What changed |
+|----|--------------|
+| M8 | **My picks page.** The owner enters a winner and a confidence (50–99%) per upcoming bout; picks are stored in a SQLite file at `PICKS_PATH` (default `data/picks.sqlite`, `/data/picks.sqlite` in Docker) because the app opens the database read-only and the refresh replaces it. Each pick records the model's and bookmakers' numbers at save time. Picks lock once the event date has passed (the event day itself stays open, since the feed has no start time). Results are matched to the finished bout by the two fighters within 3 days, as the bout ID changes when the result arrives. Not yet done: showing the pick on the Bout page, method picks, and using the picks as a model input (needs a few hundred scored picks first). |
