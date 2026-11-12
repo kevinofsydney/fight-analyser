@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     log_dir: Path = Path("data/logs")
     overrides_dir: Path = Path("data/overrides")
     hypotheses_dir: Path = Path("hypotheses")
+    # The owner's own picks (My picks page). Separate from the database, which is replaced daily.
+    picks_path: Path = Path("data/picks.sqlite")
 
     odds_api_key: str = ""
 

@@ -32,6 +32,7 @@ def db(tmp_path_factory, monkeypatch_module):
     con.close()
     monkeypatch_module.setenv("DB_PATH", str(path))
     monkeypatch_module.setenv("DATA_RELEASE_URL", "")
+    monkeypatch_module.setenv("PICKS_PATH", str(path.with_name("picks.sqlite")))
     get_settings.cache_clear()
     yield path
     get_settings.cache_clear()
@@ -576,5 +577,92 @@ def test_value_picks_shows_a_past_card_with_results(db, tmp_path, monkeypatch):
         assert any("Track record" in w.value for w in at.warning)
         cards = next(df.value for df in at.dataframe if "Return per $1" in df.value.columns)
         assert len(cards) >= 1
+    finally:
+        get_settings.cache_clear()
+
+
+def test_my_picks_saves_a_pick_and_scores_a_finished_one(db, tmp_path, monkeypatch):
+    import shutil
+    from datetime import UTC, datetime, timedelta
+
+    import duckdb
+
+    from fightdb import picks
+
+    path = tmp_path / "picks.duckdb"
+    picks_path = tmp_path / "picks.sqlite"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id, old_event = (
+        r[0]
+        for r in con.execute("SELECT event_id FROM events ORDER BY date DESC LIMIT 2").fetchall()
+    )
+    fight_day = datetime.now(UTC).date() + timedelta(days=2)
+    con.execute(
+        "UPDATE events SET status = 'upcoming', date = ? WHERE event_id = ?", [fight_day, event_id]
+    )
+    con.execute("UPDATE bouts SET status = 'scheduled' WHERE event_id = ?", [event_id])
+    con.execute(
+        "UPDATE bout_sides SET status = 'scheduled', event_date = ? WHERE event_id = ?",
+        [fight_day, event_id],
+    )
+    bout_id, a_id, a_name, b_id, b_name = con.execute(
+        """SELECT bout_id, fighter_id, fighter_name, opp_id, opp_name FROM bout_sides
+           WHERE event_id = ? AND is_a ORDER BY card_order LIMIT 1""",
+        [event_id],
+    ).fetchone()
+    done = con.execute(
+        """SELECT bout_id, event_date, fighter_id, fighter_name, opp_id, opp_name, won
+           FROM bout_sides WHERE event_id = ? AND is_a AND won + lost = 1 LIMIT 1""",
+        [old_event],
+    ).fetchone()
+    con.close()
+    done_day = done[1].date() if isinstance(done[1], datetime) else done[1]
+    # A pick made before a card that has since finished, under the ID the bout had back then.
+    picks.save(
+        picks_path,
+        picks.Pick(
+            bout_id="espn:old",
+            event_name="Old card",
+            event_date=done_day,
+            fighter_a_id=done[2],
+            fighter_a_name=done[3],
+            fighter_b_id=done[4],
+            fighter_b_name=done[5],
+            pick_id=done[2],
+            p_pick=0.8,
+            model_p_pick=0.55,
+        ),
+        today=done_day,
+    )
+    monkeypatch.setenv("DB_PATH", str(path))
+    monkeypatch.setenv("PICKS_PATH", str(picks_path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "pages" / "11_My_Picks.py"), default_timeout=120)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        # The model's numbers stay hidden until asked for.
+        assert not any("Model:" in c.value for c in at.caption)
+        table = next(df.value for df in at.dataframe if "My pick" in df.value.columns)
+        assert table["Result"].tolist() == ["✓ Won" if done[6] == 1 else "✗ Lost"]
+        board = next(df.value for df in at.dataframe if "Log loss" in df.value.columns)
+        assert set(board["Who"]) == {"You", "Model"}
+        assert any("mostly luck" in c.value for c in at.caption)
+
+        at.radio(key=f"pick_{bout_id}").set_value(b_name)
+        at.slider(key=f"pct_{bout_id}").set_value(72)
+        next(b for b in at.button if b.label == "Save picks").click()
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        saved = picks.load(picks_path).set_index("bout_id")
+        assert len(saved) == 2
+        assert saved.loc[bout_id, "pick_id"] == b_id
+        assert saved.loc[bout_id, "p_pick"] == pytest.approx(0.72)
+        assert saved.loc[bout_id, "fighter_a_id"] == a_id
+        assert saved.loc[bout_id, "fighter_a_name"] == a_name
+        assert any("Saved 1 pick." in s.value for s in at.success)
+        table = next(df.value for df in at.dataframe if "My pick" in df.value.columns)
+        assert "Awaiting result" in set(table["Result"])
     finally:
         get_settings.cache_clear()
