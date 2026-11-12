@@ -162,3 +162,19 @@ def test_canon_pro_fights_cover_every_promotion(canon):
         assert p.is_finish == (b.method_group in ("ko_tko", "sub"))
     no_contests = {b.bout_id for b in canon.bouts if b.result_a == "NC"}
     assert no_contests and not no_contests & {p.fight_id for p in canon.pro_fights}
+
+
+def test_canon_pro_fighters_name_everyone_in_pro_fights(canon):
+    in_fights = {x for p in canon.pro_fights for x in (p.fighter_a_id, p.fighter_b_id)}
+    named = {p.fighter_id for p in canon.pro_fighters}
+    assert named == in_fights
+    assert any(x.startswith("fc-fighter:") for x in named)  # never fought in the UFC
+    keys = [(p.fighter_id, p.name) for p in canon.pro_fighters]
+    assert len(keys) == len(set(keys))
+    # A fighter's main name matches the one the UFC import uses, and other spellings are kept.
+    ufc = {f.fighter_id: f.name for f in canon.fighters}
+    spellings: dict[str, set[str]] = {}
+    for p in canon.pro_fighters:
+        spellings.setdefault(p.fighter_id, set()).add(p.name)
+    assert all(ufc[x] in spellings[x] for x in ufc if x in spellings)
+    assert any(len(v) > 1 for v in spellings.values())

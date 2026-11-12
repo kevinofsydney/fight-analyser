@@ -40,7 +40,7 @@ def ingest_upcoming(
     run_id: str | None = None,
 ) -> UpcomingResult:
     overrides = identity.load_overrides(overrides_path) if overrides_path else {}
-    matcher = identity.FighterMatcher(con, overrides)
+    matcher = identity.FighterMatcher(con, overrides, today)
     if any(ev.source != "espn" for ev in upcoming):
         return _ingest_fallback(con, upcoming, today, matcher, run_id)
     _adopt_fallback_events(con, upcoming)
@@ -78,12 +78,13 @@ def ingest_upcoming(
                 m = matcher.match(uf.source_fighter_id, uf.name, uf.record, division)
                 if m.fighter_id is None:
                     fid = f"espn:{uf.source_fighter_id}"
-                    unmatched.append(f"{uf.name} ({ev.name})")
+                    unmatched.append(_unmatched(matcher, uf.name, ev.name))
                     new_fighters.append(
                         Fighter(fighter_id=fid, name=uf.name, sex=sex, source="espn")  # type: ignore[arg-type]
                     )
                 else:
                     fid = m.fighter_id
+                    _add_pro_fighter(con, matcher, new_fighters, fid, uf.name, sex)
                     if m.method not in ("alias",):
                         aliases.append(
                             FighterAlias(
@@ -149,6 +150,30 @@ def ingest_upcoming(
         unmatched,
         [c.summary for c in diff.changes] if not first_run else [],
     )
+
+
+def _unmatched(matcher: identity.FighterMatcher, name: str, event: str) -> str:
+    """Status-page line; namesakes with pro fights are listed so one can be confirmed by hand."""
+    cands = matcher.pro_candidates(name)
+    if not cands:
+        return f"{name} ({event})"
+    listed = "; ".join(c.describe() for c in cands)
+    return f"{name} ({event}): pro history not linked, candidates: {listed}"
+
+
+def _add_pro_fighter(
+    con: duckdb.DuckDBPyConnection,
+    matcher: identity.FighterMatcher,
+    new_fighters: list[Fighter],
+    fighter_id: str,
+    name: str,
+    sex: str | None,
+) -> None:
+    """A fighter linked to `pro_fights` but never in the UFC has no `fighters` row yet."""
+    if not _exists(con, fighter_id):
+        row = matcher.pro_fighter(fighter_id, name, sex)
+        if row is not None:
+            new_fighters.append(row)
 
 
 def _slug(text: str) -> str:
@@ -220,10 +245,12 @@ def _ingest_fallback(
                 fid = m.fighter_id or known_names.get(identity.name_key(uf.name))
                 if fid is None:
                     fid = f"{ev.source}:{_slug(uf.name)}"
-                    unmatched.append(f"{uf.name} ({ev.name})")
+                    unmatched.append(_unmatched(matcher, uf.name, ev.name))
                     new_fighters.append(
                         Fighter(fighter_id=fid, name=uf.name, sex=sex, source=ev.source)  # type: ignore[arg-type]
                     )
+                else:
+                    _add_pro_fighter(con, matcher, new_fighters, fid, uf.name, sex)
                 ids.append(fid)
             bout_id = f"{ev.source}:{_slug(ev.source_event_id)}:{_slug(ub.source_bout_id)}"
             bouts.append(

@@ -77,3 +77,28 @@ def test_newly_identified_fighter_is_not_a_change():
     ]
     after = [BASE[0], CardBout("b2", "e1", "p", "ec32", "P", "Matthieu Duclos", "Lightweight", 1)]
     assert diff_cards([E1], before, [E1], after, TODAY).changes == []
+
+
+def test_linking_one_fighter_ignores_how_the_other_is_spelled():
+    # The opponent is stored under their UFC name but listed with a longer one; only the
+    # debutant's ID changed, and their name did not.
+    before = [
+        CardBout("b2", "e1", "espn:5", "ec32", "New Guy", "Matthieu Duclos", "Middleweight", 1)
+    ]
+    after = [
+        CardBout(
+            "b2",
+            "e1",
+            "fc-fighter:9",
+            "ec32",
+            "New Guy",
+            "Matthieu Letho Duclos",
+            "Middleweight",
+            1,
+        )
+    ]
+    assert diff_cards([E1], before, [E1], after, TODAY).changes == []
+    swapped = [
+        CardBout("b2", "e1", "fc-fighter:9", "ec32", "Other Guy", "M Duclos", "Middleweight", 1)
+    ]
+    assert types(diff_cards([E1], before, [E1], swapped, TODAY)) == ["fighter_replaced"]

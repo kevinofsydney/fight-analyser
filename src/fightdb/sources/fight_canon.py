@@ -1,5 +1,6 @@
 """fight-canon-db (`canon.db`, SQLite) -> source-neutral records. UFC events only, except
-`pro_fights`: bare results from every promotion, for the all-promotion rating.
+`pro_fights` (bare results from every promotion, for the all-promotion rating) and
+`pro_fighters` (the names of the fighters in them).
 
 https://github.com/Jadevit/fight-canon-db. Heights and reaches are stored in inches there.
 `fight_participants.corner` is the order UFC Stats lists the fighters (0 = red from 2010-03-21);
@@ -21,6 +22,7 @@ from fightdb.sources.models import (
     JudgeScore,
     OddsLine,
     ProFight,
+    ProFighter,
     RoundStats,
 )
 
@@ -230,6 +232,7 @@ def _load(con: sqlite3.Connection, source_version: str | None, since: str | None
 
     odds = _odds(con, fight_ids, fighter_ids)
     judges = _judge_scores(con, fight_ids, fighter_ids)
+    pro_fights, pro_ids = _pro_fights(con, fight_ids, fighter_ids, since)
     return HistoryBundle(
         source=SOURCE,
         source_version=source_version,
@@ -240,7 +243,8 @@ def _load(con: sqlite3.Connection, source_version: str | None, since: str | None
         rounds=rounds,
         odds=odds,
         judge_scores=judges,
-        pro_fights=_pro_fights(con, fight_ids, fighter_ids, since),
+        pro_fights=pro_fights,
+        pro_fighters=_pro_fighters(con, fighter_ids, pro_ids),
     )
 
 
@@ -249,11 +253,12 @@ def _pro_fights(
     fight_ids: dict[int, str],
     fighter_ids: dict[int, str],
     since: str | None,
-) -> list[ProFight]:
+) -> tuple[list[ProFight], set[int]]:
     has_type = any(r[1] == "bout_type" for r in con.execute("PRAGMA table_info(fights)"))
     pro_sql = "AND (f.bout_type IS NULL OR f.bout_type = 'pro')" if has_type else ""
     since_sql = "AND e.date >= ?" if since else ""
     out: list[ProFight] = []
+    seen: set[int] = set()
     for fight, d, promotion, method, a, b, result in con.execute(
         f"""SELECT f.fight_id, e.date, e.promotion, f.method, a.fighter_id, b.fighter_id, a.result
             FROM fights f JOIN events e USING (event_id)
@@ -266,6 +271,7 @@ def _pro_fights(
         day = units.parse_date(d)
         if day is None:
             continue
+        seen.update((a, b))
         out.append(
             ProFight(
                 fight_id=fight_ids[fight],
@@ -277,7 +283,39 @@ def _pro_fights(
                 is_finish=units.method_group(method) in ("ko_tko", "sub"),
             )
         )
-    return out
+    return out, seen
+
+
+def _pro_fighters(
+    con: sqlite3.Connection, fighter_ids: dict[int, str], wanted: set[int]
+) -> list[ProFighter]:
+    """One record per fighter per spelling: the main name plus every source's own name."""
+    details: dict[int, dict[str, object]] = {}
+    names: dict[int, list[str]] = {}
+    for fid, name, dob, height, reach, stance, sex, nationality in con.execute(
+        "SELECT fighter_id, name, dob, height_in, reach_in, stance, sex, nationality FROM fighters"
+    ):
+        if fid not in wanted or not name:
+            continue
+        names[fid] = [name]
+        details[fid] = {
+            "dob": units.parse_date(dob),
+            "height_cm": units.inches_to_cm(height),
+            "reach_cm": units.inches_to_cm(reach),
+            "stance": units.null_if_dash(stance),
+            "sex": sex if sex in ("M", "F") else None,
+            "nationality": units.null_if_dash(nationality),
+        }
+    for fid, name in con.execute(
+        "SELECT fighter_id, name FROM fighter_aliases WHERE name IS NOT NULL AND name <> ''"
+    ):
+        if fid in names and name not in names[fid]:
+            names[fid].append(name)
+    return [
+        ProFighter(fighter_id=fighter_ids[fid], name=name, **details[fid])  # type: ignore[arg-type]
+        for fid, spellings in names.items()
+        for name in spellings
+    ]
 
 
 def _judge_scores(
