@@ -27,6 +27,8 @@ DIFF_FEATURES = [
     "diff_pro_elo",
     "diff_pro_fights",
     "diff_pro_win_pct",
+    # Elo scored on the share of each fight won, so it separates a dominant win from a close one.
+    "diff_perf_elo",
     "diff_age_years",
     "diff_reach_cm",
     "diff_ufc_fights",
