@@ -2,6 +2,11 @@
 # Find the ESPN athlete ID in the Status page's "unmatched" list or the ESPN URL, and the
 # fighter_id (UFC Stats ID) in the Fighter page or `SELECT fighter_id, name FROM fighters`.
 #
+# A fighter with no UFC bout yet is linked to their earlier pro fights automatically when
+# exactly one recently active fighter has that name and a matching record. When that fails,
+# the Status page lists the candidates with their IDs (a UFC Stats ID or "fc-fighter:<n>");
+# add the right one here the same way.
+#
 # espn:
 #   "4418809": "93fe7332d16c6ad9"
 espn:

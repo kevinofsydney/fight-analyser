@@ -6,7 +6,7 @@ from fightdb.db.conn import init_db
 from fightdb.pipeline import backfill
 from tests.conftest import FIXTURES
 
-TABLES = ["events", "fighters", "bouts", "round_stats", "odds", "pro_fights"]
+TABLES = ["events", "fighters", "bouts", "round_stats", "odds", "pro_fights", "pro_fighters"]
 
 
 @pytest.fixture

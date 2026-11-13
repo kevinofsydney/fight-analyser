@@ -128,6 +128,20 @@ CREATE TABLE IF NOT EXISTS pro_fights (
     is_finish     BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- Names (every spelling the source has) and basic details of the fighters in pro_fights, so a
+-- scheduled fighter with no UFC bout can be linked to their earlier fights. Not shown in the app.
+CREATE TABLE IF NOT EXISTS pro_fighters (
+    fighter_id  VARCHAR NOT NULL,            -- as in pro_fights
+    name        VARCHAR NOT NULL,
+    dob         DATE,
+    height_cm   DOUBLE,
+    reach_cm    DOUBLE,
+    stance      VARCHAR,
+    sex         VARCHAR,
+    nationality VARCHAR,
+    PRIMARY KEY (fighter_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS card_changes (
     change_id    VARCHAR PRIMARY KEY,
     detected_at  TIMESTAMP NOT NULL,

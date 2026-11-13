@@ -59,6 +59,12 @@ class DiffResult:
     cancelled_event_ids: list[str] = field(default_factory=list)
 
 
+def _names(b: CardBout, fighter_ids: frozenset[str]) -> set[str]:
+    from fightdb.sources.identity import name_key
+
+    return {name_key(b.name_of(f)) for f in fighter_ids}
+
+
 def _vs(b: CardBout) -> str:
     return f"{b.a_name} vs. {b.b_name}"
 
@@ -177,9 +183,12 @@ def diff_cards(
         prev = old_b.get(bid)
         if not prev:
             continue
-        # Same names under new IDs means a fighter was just identified (e.g. a new override),
-        # not a change to the card.
-        if prev.fighter_ids != b.fighter_ids and prev.names != b.names:
+        # Same names under new IDs means a fighter was just identified (e.g. a new override, or a
+        # debutant linked to their pro history), not a change to the card. Only the sides whose
+        # ID changed are compared: the other side's stored name may be spelled differently.
+        if _names(prev, prev.fighter_ids - b.fighter_ids) != _names(
+            b, b.fighter_ids - prev.fighter_ids
+        ):
             placeholder = any(f.startswith("tba:") for f in prev.fighter_ids)
             res.changes.append(
                 CardChange(

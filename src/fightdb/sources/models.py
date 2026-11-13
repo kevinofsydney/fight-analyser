@@ -136,6 +136,21 @@ class ProFight(_Record):
     is_finish: bool = False
 
 
+class ProFighter(_Record):
+    """One name a fighter in `pro_fights` is known by (a fighter has a row per spelling).
+
+    Only used to link a scheduled fighter with no UFC bout to their earlier pro fights."""
+
+    fighter_id: str
+    name: str
+    dob: date | None = None
+    height_cm: float | None = None
+    reach_cm: float | None = None
+    stance: str | None = None
+    sex: Literal["M", "F"] | None = None
+    nationality: str | None = None
+
+
 class HistoryBundle(BaseModel):
     """Everything a history adapter yields in one import."""
 
@@ -149,6 +164,7 @@ class HistoryBundle(BaseModel):
     odds: list[OddsLine] = []
     judge_scores: list[JudgeScore] = []
     pro_fights: list[ProFight] = []
+    pro_fighters: list[ProFighter] = []
 
 
 class UpcomingFighter(_Record):

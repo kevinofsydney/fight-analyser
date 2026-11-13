@@ -63,7 +63,6 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 | ID | Task | |
 |----|------|--|
 | M1 | **Decision-label watch.** In the method model, big favourites winning on points are under-predicted (0.5–0.6 bin: 53% predicted, 64% observed, n=47). Once that bin has 100+ fighters in the last three test years and is still off by more than 5 pp, the gate hides only the decision label. Try adding `self_p_win` as a feature to the method model and compare walk-forward log loss; keep it only if log loss improves and every method stays calibrated. | 🔴 |
-| M6 | **Link upcoming debutants to their pro history.** The all-promotion rating (below) is unknown for a scheduled fighter with no UFC bout, because ESPN names are only matched against `fighters`. Those are the bouts where the rating helps most. Match unresolved ESPN names to `fc-fighter:<n>` IDs in `pro_fights` (needs fighter names for non-UFC fighters from fight-canon-db, and care with common names). | 🔴 |
 | M7 | **KO label gate.** Since the all-promotion rating, the 0.3–0.4 "wins by KO" bin of 2024–2026 predicts 34% and observes 41% (n=197), over the 5-point limit, so the KO label is hidden. Over all test years the bin is fine (34% vs 36%), and 2026 has an unusually high KO rate (20% vs 16–17%). Adding the win model's output, weight class, sex or scheduled rounds to the method model did not close it. | 🔴 |
 | M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
 | M3 | **Multi-variable hypotheses** (PRD §10): logistic regression with covariates, so "older by 8+ years" can be tested controlling for Elo gap. Add an optional `controls:` list to the hypothesis YAML schema (a contract change in `analytics/schema.py`); report the adjusted odds ratio and CI. | 🔴 |
@@ -147,6 +146,17 @@ Same walk-forward test as above (log loss 2012+ / 2020+, accuracy 2012+ / 2020+)
 - **UFC-only Elo** now carries almost no weight but stays in: the app shows it and it is the fallback when pro history is unknown.
 
 Tried at the same time, no gain (all within ±0.002, intervals spanning zero): log-ratio indices, offence × defence products, UFC win %, log UFC fights, age² over 30, layoff, height, pace index. "Offence minus the opponent's defence" differences are exactly a sum of two inputs the model already has. Median-filling the method model's missing finish and distance rates left log loss unchanged and broke two gates.
+
+## Debutants linked to their pro history on 2026-11-12 (M6)
+
+A scheduled fighter with no UFC bout is now matched to the fighter of the same name in `pro_fights`, so the all-promotion rating, pro record and (where the source has it) date of birth are known before their debut. Names come from the new `pro_fighters` table: every spelling fight-canon-db holds for each fighter in `pro_fights`.
+
+- **Rule** (`sources/identity.py`): same name in any word order, last pro fight within 3 years, and wins and losses each within 3 of the record ESPN lists. Exactly one such fighter is linked; anything else is left alone. No fuzzy matching.
+- **Replay on the 1,376 UFC debutants of 2015–2026** (name and activity window only): 1,326 had one candidate, all correct. 39 had several, and 38 of those were settled correctly by the record. 9 had been inactive for more than 3 years, 2 had no earlier fights and 1 stayed ambiguous. None was linked to the wrong person. A 2-year window gave two wrong links; a 5-year window none, with 54 ambiguous instead of 39.
+- **Live cards on 2026-11-12:** 11 of 13 debutants linked. Their listed records matched ours exactly or by one to three wins.
+- **Not linked, needs a person:** when ESPN's record is far from ours (Bo Hyun Park: ESPN 0-1, ours 10-3; Jiniushiyue: ESPN 13-4, ours 17-4) or two namesakes fit. The Status page lists each with its candidates (name, record, last fight, ID); confirm one by adding the ESPN athlete ID and that ID to `data/overrides/fighter_identity.yaml`.
+- **IDs:** the link uses whatever ID `pro_fights` has. That is a UFC Stats ID when the source already knows it, otherwise `fc-fighter:<n>`, which is followed to the UFC Stats ID after the debut.
+- **Owner decision, 2026-11-13:** the Bo Hyun Park and Jiniushiyue candidates are not the same people as the scheduled fighters, so neither gets an override. The record check was right to hold them back.
 
 ## My picks on 2026-11-12
 

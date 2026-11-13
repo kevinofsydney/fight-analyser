@@ -30,7 +30,7 @@ Fight Analyser is a personal UFC database and analysis tool. It keeps a complete
 - Betting advice or automated betting. Historical closing odds and optional upcoming bookmaker prices are displayed for comparison; see DECISIONS.md D7.
 - Complex ML prediction models beyond the calibrated logistic models in §4.6. (v2 candidate; the v1 data model must not block it.)
 - Multi-user accounts, social features, comments.
-- Promotions other than the UFC. (Their results are imported as rating inputs for UFC fighters, in `pro_fights`; nothing else about them is shown or analysed.)
+- Promotions other than the UFC. (Their results are imported as rating inputs for UFC fighters, in `pro_fights`, and their fighters' names in `pro_fighters` so a UFC newcomer can be linked to them; nothing else about them is shown or analysed.)
 - Real-time / live fight-night updates.
 
 ## 3. Users and core use cases
