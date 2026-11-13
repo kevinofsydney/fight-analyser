@@ -156,3 +156,10 @@ A scheduled fighter with no UFC bout is now matched to the fighter of the same n
 - **Live cards on 2026-11-12:** 11 of 13 debutants linked. Their listed records matched ours exactly or by one to three wins.
 - **Not linked, needs a person:** when ESPN's record is far from ours (Bo Hyun Park: ESPN 0-1, ours 10-3; Jiniushiyue: ESPN 13-4, ours 17-4) or two namesakes fit. The Status page lists each with its candidates (name, record, last fight, ID); confirm one by adding the ESPN athlete ID and that ID to `data/overrides/fighter_identity.yaml`.
 - **IDs:** the link uses whatever ID `pro_fights` has. That is a UFC Stats ID when the source already knows it, otherwise `fc-fighter:<n>`, which is followed to the UFC Stats ID after the debut.
+- **Owner decision, 2026-11-13:** the Bo Hyun Park and Jiniushiyue candidates are not the same people as the scheduled fighters, so neither gets an override. The record check was right to hold them back.
+
+## My picks on 2026-11-12
+
+| ID | What changed |
+|----|--------------|
+| M8 | **My picks page.** The owner enters a winner and a confidence (50–99%) per upcoming bout; picks are stored in a SQLite file at `PICKS_PATH` (default `data/picks.sqlite`, `/data/picks.sqlite` in Docker) because the app opens the database read-only and the refresh replaces it. Each pick records the model's and bookmakers' numbers at save time. Picks lock once the event date has passed (the event day itself stays open, since the feed has no start time). Results are matched to the finished bout by the two fighters within 3 days, as the bout ID changes when the result arrives. Not yet done: showing the pick on the Bout page, method picks, and using the picks as a model input (needs a few hundred scored picks first). |

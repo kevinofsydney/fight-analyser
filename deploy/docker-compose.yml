@@ -15,6 +15,7 @@ x-common: &common
     DB_PATH: /data/fightdb.duckdb
     DOWNLOAD_DIR: /data/sources
     LOG_DIR: /data/logs
+    PICKS_PATH: /data/picks.sqlite
   volumes:
     - fightdb-data:/data
   restart: unless-stopped

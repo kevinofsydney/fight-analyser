@@ -20,6 +20,7 @@ x-common: &common
     DB_PATH: /data/fightdb.duckdb
     DOWNLOAD_DIR: /data/sources
     LOG_DIR: /data/logs
+    PICKS_PATH: /data/picks.sqlite
   volumes:
     - ${DATA_DIR:?set DATA_DIR in .env}:/data
   restart: unless-stopped
