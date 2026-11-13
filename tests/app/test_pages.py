@@ -450,7 +450,7 @@ def test_bout_page_breaks_down_the_win_probability(db):
     total = next(m.value for m in at.markdown if m.value.startswith("**Total push"))
     assert f"= {p_win:.0%}**" in total
     factors = next(df.value for df in at.dataframe if "Push" in df.value.columns)
-    assert len(factors) == 19 and {"Weight", "Typical gap", "Gap"} <= set(factors.columns)
+    assert len(factors) == 20 and {"Weight", "Typical gap", "Gap"} <= set(factors.columns)
 
 
 def test_bout_search_filters_and_opens_the_selected_bout(db):
@@ -525,7 +525,7 @@ def test_model_performance_page_reports_backtest_and_inputs(db):
     labels = {m.label for m in at.metric}
     assert {"Fights scored", "Model picked the winner", "Brier score"} <= labels
     inputs = next(df.value for df in at.dataframe if "Lost if removed" in df.value.columns)
-    assert len(inputs) == 19
+    assert len(inputs) == 20
     assert any("Return per $1" in df.value.columns for df in at.dataframe) or any(
         "No fights with both closing odds" in c.value for c in at.caption
     )

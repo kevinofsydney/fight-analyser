@@ -163,3 +163,25 @@ A scheduled fighter with no UFC bout is now matched to the fighter of the same n
 | ID | What changed |
 |----|--------------|
 | M8 | **My picks page.** The owner enters a winner and a confidence (50–99%) per upcoming bout; picks are stored in a SQLite file at `PICKS_PATH` (default `data/picks.sqlite`, `/data/picks.sqlite` in Docker) because the app opens the database read-only and the refresh replaces it. Each pick records the model's and bookmakers' numbers at save time. Picks lock once the event date has passed (the event day itself stays open, since the feed has no start time). Results are matched to the finished bout by the two fighters within 3 days, as the bout ID changes when the result arrives. Not yet done: showing the pick on the Bout page, method picks, and using the picks as a model input (needs a few hundred scored picks first). |
+
+## Performance rating on 2026-11-13 (M9)
+
+A second Elo, `perf_elo`, scored on how much of each fight a fighter won instead of win or loss, added to the win and method models as `diff_perf_elo`. Same walk-forward test as above (log loss 2012+ / 2020+, accuracy 2012+ / 2020+). The closing line scores 0.6063 on the 2012+ bouts that have one.
+
+| Model | Log loss | Accuracy |
+|-------|----------|----------|
+| Before | 0.6402 / 0.6305 | 63.6% / 64.8% |
+| **Shipped:** + `diff_perf_elo` | **0.6367 / 0.6292** | **64.0% / 64.6%** |
+
+- **Size of the gain:** paired bootstrap interval for 2012+ is −0.0035 [−0.0059, −0.0012]. For 2020+ alone it is −0.0013 [−0.0044, +0.0020], which is not distinguishable from zero. About a quarter of the all-promotion rating's gain.
+- **Share of a fight:** for a decision, the mean share of rounds won. A round's share comes from the judges' cards (before point deductions) where we have them, about 40–75% of bouts depending on the year, otherwise from a fixed logistic on the round's stat leads (`ratings.ROUND_WEIGHTS`). For a finish, rounds before the last count as fought and the finisher takes the last round and all unfought ones. Disqualifications and bouts with no round data use the plain result.
+- **Round model:** fitted once on the 787 scored rounds before 2012, so it never sees a test year. It picks the judges' round winner in 83% of 11,360 rounds from 2012. Fitting it on all years instead gave 84%.
+- **K = 96.** 96, 150 and 250 gave 0.6361, 0.6358 and 0.6359 in the prototype; 24 and 48 gave 0.6387 and 0.6375. Chosen on the test years, like the all-promotion K.
+- **Judges' cards matter:** the same rating from stat leads alone gave 0.6376 at K = 96.
+- **Method model:** log loss 1.6023 → 1.5986. Submission and decision gates pass; the KO gate still fails (M7).
+- **UFC-only Elo:** dropping `diff_elo` once `diff_perf_elo` is in gives 0.6376 / 0.6291, so it still adds a little and stays.
+
+Tried at the same time, no better: starting the rating from the all-promotion Elo at debut (0.6363 at half weight, 0.6371 in full), a faster K for a fighter's first fights (0.6369), an exponentially weighted mean of past fight shares instead of a rating (0.6388 to 0.6398), and that mean on top of the rating (0.6364). Blending the share half-and-half with the plain result scored the same as the share alone.
+
+Not done: non-UFC fights carry no round data, so this rating starts at 1500 on UFC debut.
+
