@@ -185,3 +185,24 @@ Tried at the same time, no better: starting the rating from the all-promotion El
 
 Not done: non-UFC fights carry no round data, so this rating starts at 1500 on UFC debut.
 
+
+## Previous cards and momentum on 2026-11-20 (M10)
+
+**Previous cards page** (`app/pages/12_Previous_Cards.py`, scoring in `app/past_cards.py`): for each finished card, who the model and the bookmakers picked, who won and how, the model's chance for the winner and its likeliest of the six endings, plus a table of recent cards with hit rates and Brier scores. The numbers are the walk-forward ones (model trained on every fight before that year), not an archive of what the app showed before the fight, which used a model that also knew that year's earlier fights. Finished bouts have no card position, so title and five-round bouts are listed first. The Value Picks cumulative chart now labels each year.
+
+**Momentum experiment** (`scripts/momentum_experiment.py`, run against the 2026-11-19 release rebuilt with M9). Fighter-sides of decided UFC bouts, 2012+; "last results" are earlier UFC bouts, newest first.
+
+| Last results | Fighters | Won | Model expected | Bookmakers expected |
+|---|---|---|---|---|
+| W | 6,653 | 52.8% | 52.2% | 52.3% |
+| L | 5,370 | 47.9% | 47.8% | 48.2% |
+| WW | 3,331 | 55.6% | 54.2% | 54.7% |
+| LL | 1,684 | 45.7% | 45.2% | 44.9% |
+| WWW | 1,766 | 55.9% | 55.4% | 56.1% |
+| LLL | 431 | 41.8% (37–47%) | 43.8% | 41.5% |
+
+- **Raw effect is real but small:** three straight wins → 56%, three straight losses → 42%.
+- **It is mostly quality, not momentum:** the model (which has `diff_streak` but mostly rates fighters by Elo and skill) and the closing line already expect nearly the same rates. No pattern is off from the model by more than the 95% interval.
+- **Walk-forward win model** (log loss 2012+ / 2020+): current 0.6367 / 0.6292. Removing `diff_streak` +0.0005 [−0.0002, +0.0012]; replacing it with last result or net of last 3 UFC results, +0.0005 to +0.0006; adding net of last 3 on top +0.0002; adding net of last 3 pro fights (all promotions) −0.0003 [−0.0017, +0.0010]. None is distinguishable from zero. Nothing shipped; `diff_streak` stays.
+
+**Bookmakers vs time:** the closing line's Brier was 0.20–0.22 through 2022 and 0.198–0.201 since 2024; the model's gap to it has stayed 0.01–0.02 throughout. That fits the flattening of the value-picks profit line since 2023.

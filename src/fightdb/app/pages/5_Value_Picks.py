@@ -148,7 +148,17 @@ else:
         alt.Chart(running, title="Cumulative profit / loss ($1 per pick)")
         .mark_line(strokeWidth=2, color=explain.SIDE_COLORS[0])
         .encode(
-            x=alt.X("event_date:T", title=None),
+            # One tick and gridline per 1 January, so each year's stretch is easy to see.
+            x=alt.X(
+                "event_date:T",
+                title=None,
+                axis=alt.Axis(
+                    format="%Y",
+                    tickCount={"interval": "year", "step": 1},
+                    grid=True,
+                    labelOverlap=True,
+                ),
+            ),
             y=alt.Y("cumulative:Q", title="Units"),
             tooltip=[
                 alt.Tooltip("event_name:N", title="Card"),
