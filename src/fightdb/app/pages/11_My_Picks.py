@@ -228,12 +228,14 @@ OUTCOMES = {
     "nc": "No contest",
     "pending": "Awaiting result",
 }
-st.dataframe(
+scored = scored.reset_index(drop=True)
+components.nav_table(
     pd.DataFrame(
         {
             "Date": scored["event_date"].map(components.fmt_date),
             "Event": scored["event_name"],
-            "Bout": scored["fighter_a_name"] + " vs " + scored["fighter_b_name"],
+            "Fighter": scored["fighter_a_name"],
+            "Opponent": scored["fighter_b_name"],
             "My pick": scored["pick_name"],
             "My %": scored["p_pick"],
             "Model % for my pick": scored["model_p"],
@@ -242,13 +244,18 @@ st.dataframe(
             "Method": scored["method"].fillna("—"),
         }
     ),
-    hide_index=True,
-    width="stretch",
+    key="my_picks_scored",
+    fighter_ids={
+        "Fighter": scored["fighter_a_id"],
+        "Opponent": scored["fighter_b_id"],
+        "My pick": scored["pick_id"],
+    },
     column_config={
         c: st.column_config.NumberColumn(format="percent")
         for c in ("My %", "Model % for my pick", "Bookmakers % for my pick")
     },
 )
+st.caption("Click a fighter's name to open their page.")
 st.download_button(
     "Download my picks (CSV)",
     scored.to_csv(index=False).encode("utf-8"),

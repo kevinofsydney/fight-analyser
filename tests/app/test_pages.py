@@ -323,7 +323,7 @@ def test_home_card_selection_opens_selected_bout(db, tmp_path, monkeypatch):
     try:
         at = AppTest.from_file(str(APP / "Home.py"), default_timeout=120)
         at.session_state[f"card_{event_id}"] = DataframeSelectionSerde().deserialize(
-            json.dumps({"selection": {"rows": [1]}})
+            json.dumps({"selection": {"cells": [[1, "model"]]}})
         )
         at.session_state["bout_event_selector"] = "stale-event"
         at.session_state["bout_selector"] = "stale-bout"
@@ -489,7 +489,7 @@ def test_bout_search_filters_and_opens_the_selected_bout(db):
     at.text_input[0].set_value(name).run()
 
     at.session_state["search_results"] = DataframeSelectionSerde().deserialize(
-        json.dumps({"selection": {"rows": [0]}})
+        json.dumps({"selection": {"cells": [[0, "Date"]]}})
     )
     at.run()
     assert not at.exception, [e.value for e in at.exception]
@@ -664,5 +664,50 @@ def test_my_picks_saves_a_pick_and_scores_a_finished_one(db, tmp_path, monkeypat
         assert any("Saved 1 pick." in s.value for s in at.success)
         table = next(df.value for df in at.dataframe if "My pick" in df.value.columns)
         assert "Awaiting result" in set(table["Result"])
+    finally:
+        get_settings.cache_clear()
+
+
+def test_fighter_page_opens_from_link(db):
+    import duckdb
+
+    con = duckdb.connect(str(db), read_only=True)
+    fid, name = con.execute(
+        "SELECT f.fighter_id, f.name FROM fighters f JOIN bout_sides s USING (fighter_id) LIMIT 1"
+    ).fetchone()
+    con.close()
+    at = AppTest.from_file(str(APP / "pages" / "8_Fighter.py"), default_timeout=120)
+    at.query_params["fighter"] = fid
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(name in h.value for h in at.header)
+
+
+def test_clicking_a_fighter_name_opens_their_page(db, tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    import duckdb
+    from streamlit.elements.arrow import DataframeSelectionSerde
+
+    path = tmp_path / "home-fighter.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id = con.execute("SELECT event_id FROM events ORDER BY date DESC LIMIT 1").fetchone()[0]
+    con.execute("UPDATE events SET status = 'upcoming' WHERE event_id = ?", [event_id])
+    opp_id = con.execute(
+        "SELECT opp_id FROM bout_sides WHERE event_id = ? AND is_a ORDER BY card_order", [event_id]
+    ).fetchall()[1][0]
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    get_settings.cache_clear()
+    try:
+        at = AppTest.from_file(str(APP / "Home.py"), default_timeout=120)
+        at.session_state[f"card_{event_id}"] = DataframeSelectionSerde().deserialize(
+            json.dumps({"selection": {"cells": [[1, "opp_name"]]}})
+        )
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert at.query_params["fighter"] in (opp_id, [opp_id])
     finally:
         get_settings.cache_clear()

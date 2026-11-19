@@ -9,10 +9,9 @@ from fightdb.app.freshness import reload_changed_modules
 
 reload_changed_modules()
 
-import pandas as pd
 import streamlit as st
 
-from fightdb.app import components, data, past_cards, value
+from fightdb.app import card_view, components, past_cards
 
 components.page("Previous cards", "🗓️")
 st.title("Previous cards")
@@ -23,28 +22,12 @@ st.caption(
     "the one here by a point or two."
 )
 
-bouts = data.query(past_cards.PAST_BOUTS_SQL + " ORDER BY a.event_date DESC")
-if bouts.empty:
+scored = card_view.load_scored()
+if scored.empty:
     st.info("No scored past bouts yet. The model needs a daily refresh with enough history.")
     st.stop()
-market = value.bouts_with_market()
-if not market.empty:
-    bouts = bouts.merge(market[["bout_id", "market_p"]], on="bout_id", how="left")
-scored = past_cards.score(bouts)
 cards = past_cards.by_card(scored)
-
-
-def _pct(right: float, n: int) -> str:
-    return f"{right / n:.0%}" if n else "—"
-
-
-def _counts(s: dict[str, float]) -> str:
-    text = f"Model {s['model_right']:.0f} of {s['decisive']}"
-    if s["with_market"]:
-        text += f", bookmakers {s['market_right']:.0f} of {s['with_market']}"
-    if s["endings"]:
-        text += f", likeliest ending {s['ending_right']:.0f} of {s['endings']}"
-    return text + "."
+_pct, _counts = card_view.pct, card_view.counts
 
 
 st.subheader("Recent cards")
@@ -122,75 +105,11 @@ if chosen != st.session_state.get("previous_card_chosen"):
         st.session_state["previous_card"] = chosen
 event_id = st.selectbox("Card", list(labels), format_func=labels.get, key="previous_card")
 
-# Finished bouts carry no card position, so title and five-round fights go first.
-card = (
-    scored[scored["event_id"] == event_id]
-    .sort_values(["is_title", "scheduled_rounds", "card_order"], ascending=[False, False, True])
-    .reset_index(drop=True)
-)
+card = card_view.in_card_order(scored[scored["event_id"] == event_id])
 st.subheader(labels[event_id])
-s = past_cards.summary(card)
-c = st.columns(4)
-c[0].metric("Model picked the winner", _pct(s["model_right"], s["decisive"]))
-c[1].metric("Bookmakers picked the winner", _pct(s["market_right"], s["with_market"]))
-c[2].metric(
-    "Model's likeliest ending happened",
-    _pct(s["ending_right"], s["endings"]),
-    help="Of the six endings (either fighter by KO/TKO, submission or decision).",
-)
-c[3].metric(
-    "Biggest upset (model)",
-    f"{card['p_winner'].min():.0%}" if card["p_winner"].notna().any() else "—",
-    help="The lowest chance the model gave a fighter who went on to win.",
-)
-st.caption(_counts(s))
-
-
-def _mark(v: object) -> str:
-    return "—" if pd.isna(v) else ("✅" if v else "❌")  # type: ignore[arg-type]
-
-
-def _how(row: pd.Series) -> str:
-    if row["draw"] == 1:
-        return "Draw"
-    if row["no_contest"] == 1:
-        return "No contest"
-    method = row["method"] if isinstance(row["method"], str) else "—"
-    return f"{method}, R{int(row['end_round'])}" if pd.notna(row["end_round"]) else method
-
-
-show = pd.DataFrame(
-    {
-        "Bout": card["fighter_name"] + "  vs  " + card["opp_name"],
-        "Model pick": card["model_pick"] + " " + card["model_pick_p"].map("{:.0%}".format),
-        "Model": card["model_right"].map(_mark),
-        "Bookmakers pick": [
-            "—" if pd.isna(p) else f"{n} {p:.0%}"
-            for n, p in zip(card["market_pick"], card["market_pick_p"], strict=True)
-        ],
-        "Bookmakers": card["market_right"].map(_mark),
-        "Winner": card["winner"].fillna("—"),
-        "How": card.apply(_how, axis=1),
-        "Model's chance for the winner": card["p_winner"],
-        "Model's likeliest ending": card["model_ending"].fillna("—"),
-    }
-)
-selection = st.dataframe(
-    show,
-    hide_index=True,
-    width="stretch",
-    on_select="rerun",
-    selection_mode="single-row",
-    key=f"previous_bouts_{event_id}",
-    column_config={
-        "Model's chance for the winner": st.column_config.NumberColumn(format="percent"),
-    },
-)
-st.caption("Select a bout to open its Bout page. Title and five-round bouts first.")
-if selection.selection.rows:
-    st.session_state["bout_id"] = card.iloc[selection.selection.rows[0]]["bout_id"]
-    for key in ("bout_event_selector", "bout_selector"):
-        st.session_state.pop(key, None)
-    st.switch_page("pages/1_Bout.py")
-
+bankroll, kelly = card_view.bet_settings("previous")
+card = past_cards.add_bets(card, bankroll=bankroll, kelly_fraction=kelly)
+card_view.card_metrics(card)
+card_view.card_table(card, key=f"previous_bouts_{event_id}")
+st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
 st.caption("Model probabilities are for analysis, not betting advice.")

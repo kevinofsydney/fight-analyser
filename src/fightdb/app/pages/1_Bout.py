@@ -143,7 +143,7 @@ for col, side in zip(profile_cols, (a, b), strict=True):
         st.markdown(
             components.fighter_portrait(str(side.fighter_name), espn_id), unsafe_allow_html=True
         )
-        st.subheader(side.fighter_name)
+        components.fighter_link(side.fighter_name, fighter_id)
         bio = bios.loc[fighter_id] if fighter_id in bios.index else None
         nickname = bio["nickname"] if bio is not None else None
         if nickname is not None and pd.notna(nickname) and nickname:
@@ -301,19 +301,22 @@ with st.expander("How Elo was calculated"):
     )
     for side in (a, b):
         history = data.query(
-            """SELECT bout_id, event_date, opp_name, self_elo, opp_elo, result, method_group
+            """SELECT bout_id, event_date, opp_id, opp_name, self_elo, opp_elo, result,
+                      method_group
                FROM bout_sides
                WHERE fighter_id = ? AND status = 'completed' AND event_date < ?""",
             [side.fighter_id, side.event_date],
         )
         steps = ratings.elo_breakdown(history)
-        st.markdown(f"**{side.fighter_name}**")
+        components.fighter_link(side.fighter_name, side.fighter_id)
         if steps.empty:
             st.caption(
                 f"No earlier UFC fights, so the rating is the {ratings.ELO_START:.0f} starting value."
             )
             continue
-        st.dataframe(
+        # elo_breakdown keeps this order, so the IDs line up row for row.
+        ordered = history.sort_values(["event_date", "bout_id"]).reset_index(drop=True)
+        components.nav_table(
             pd.DataFrame(
                 {
                     "Date": steps["event_date"].map(components.fmt_date),
@@ -329,8 +332,9 @@ with st.expander("How Elo was calculated"):
                     "Elo after": steps["elo_after"].round(0),
                 }
             ),
-            hide_index=True,
-            width="stretch",
+            key=f"elo_steps_{side.fighter_id}",
+            fighter_ids={"Opponent": ordered["opp_id"]},
+            bout_ids=ordered["bout_id"],
             column_config={
                 "Change": st.column_config.NumberColumn(format="%+.1f"),
                 "Elo before": st.column_config.NumberColumn(format="%.0f"),
@@ -828,7 +832,8 @@ if not found:
 
 # --- Common opponents ------------------------------------------------------------------------
 common = data.query(
-    """SELECT x.opp_name AS opponent, x.fighter_name AS fighter, x.result, x.method, x.event_date
+    """SELECT x.opp_name AS opponent, x.fighter_name AS fighter, x.result, x.method, x.event_date,
+              x.bout_id, x.opp_id, x.fighter_id
        FROM bout_sides x
        WHERE x.status = 'completed' AND x.fighter_id IN (?, ?) AND x.event_date < ?
          AND x.opp_id IN (
@@ -848,6 +853,11 @@ common = data.query(
 )
 if not common.empty:
     st.subheader("Common opponents")
-    st.dataframe(
-        components.format_dates(common, dates=("event_date",)), hide_index=True, width="stretch"
+    components.nav_table(
+        components.format_dates(
+            common.drop(columns=["bout_id", "opp_id", "fighter_id"]), dates=("event_date",)
+        ),
+        key="common_opponents",
+        fighter_ids={"opponent": common["opp_id"], "fighter": common["fighter_id"]},
+        bout_ids=common["bout_id"],
     )

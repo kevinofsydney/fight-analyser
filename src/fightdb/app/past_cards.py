@@ -113,3 +113,61 @@ def by_card(scored: pd.DataFrame) -> pd.DataFrame:
         )
     out = pd.DataFrame(rows)
     return out.sort_values("event_date", ascending=False).reset_index(drop=True) if rows else out
+
+
+FLAT_STAKE = 100.0
+
+
+def add_bets(scored: pd.DataFrame, *, bankroll: float, kelly_fraction: float) -> pd.DataFrame:
+    """Two ways of betting the model, on bouts with a price for both fighters.
+
+    Flat: `FLAT_STAKE` on the model's pick at the best price. Edge-sized: Kelly staking, i.e.
+    back whichever fighter the model thinks is underpriced, with a stake that grows with the
+    edge: `kelly_fraction` × (p × price − 1) / (price − 1) of a fixed `bankroll`. The bankroll
+    doesn't compound, so one bad year can't wipe out later ones. Draws and no contests refund.
+    Expects `best_a` and `best_b` (decimal odds) alongside the columns `score` adds."""
+    b = scored.copy()
+    for col in ("best_a", "best_b"):
+        b[col] = pd.to_numeric(b[col], errors="coerce") if col in b else np.nan
+    priced = b["best_a"].notna() & b["best_b"].notna() & b["p"].notna()
+    void = (b["draw"] == 1) | (b["no_contest"] == 1)
+    settled = priced & (b["decisive"] | void)
+
+    def profit(stake: pd.Series, back_a: pd.Series, price: pd.Series) -> pd.Series:
+        won = np.where(back_a, b["won"] == 1, b["lost"] == 1)
+        out = np.where(void, 0.0, np.where(won, stake * (price - 1), -stake))
+        return pd.Series(np.where(settled & (stake > 0), out, np.nan), index=b.index)
+
+    flat_a = b["p"] >= 0.5
+    flat_price = b["best_a"].where(flat_a, b["best_b"])
+    b["flat_stake"] = np.where(settled, FLAT_STAKE, 0.0)
+    b["flat_profit"] = profit(b["flat_stake"], flat_a, flat_price)
+
+    kelly_a = (b["p"] * b["best_a"] - 1) / (b["best_a"] - 1)
+    kelly_b = ((1 - b["p"]) * b["best_b"] - 1) / (b["best_b"] - 1)
+    edge_a = kelly_a >= kelly_b
+    f = np.maximum(kelly_a.where(edge_a, kelly_b), 0.0).fillna(0.0)
+    b["edge_pick"] = np.where(f > 0, np.where(edge_a, b["fighter_name"], b["opp_name"]), None)
+    b["edge_price"] = np.where(f > 0, b["best_a"].where(edge_a, b["best_b"]), np.nan)
+    b["edge_stake"] = np.where(settled, (bankroll * kelly_fraction * f).round(2), 0.0)
+    b["edge_profit"] = profit(b["edge_stake"], edge_a, b["best_a"].where(edge_a, b["best_b"]))
+    return b
+
+
+def betting_summary(bets: pd.DataFrame) -> pd.DataFrame:
+    """Bets, amount staked, profit and return per $ staked for both ways of betting."""
+    rows = []
+    for name, prefix in (("$100 on every pick", "flat"), ("Sized by edge", "edge")):
+        placed = bets[bets[f"{prefix}_profit"].notna()]
+        staked = float(placed[f"{prefix}_stake"].sum())
+        made = float(placed[f"{prefix}_profit"].sum())
+        rows.append(
+            {
+                "Strategy": name,
+                "Bets": len(placed),
+                "Staked": staked,
+                "Profit": made,
+                "Return": made / staked if staked else np.nan,
+            }
+        )
+    return pd.DataFrame(rows)

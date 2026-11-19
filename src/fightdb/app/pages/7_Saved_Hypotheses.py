@@ -215,13 +215,15 @@ for index, (h, r, up) in enumerate(details):
         for w in r.warnings:
             st.caption(f"⚠️ {w}")
         if not up.empty:
-            st.dataframe(
+            up = up.reset_index(drop=True)
+            components.nav_table(
                 components.format_dates(
                     up[["event_name", "event_date", "fighter_name", "opp_name"]],
                     dates=("event_date",),
                 ),
-                hide_index=True,
-                width="stretch",
+                key=f"upcoming_matches_{index}",
+                fighter_ids={"fighter_name": up["fighter_id"], "opp_name": up["opp_id"]},
+                bout_ids=up["bout_id"],
             )
         st.markdown("**Explore historical outcomes**")
         candidates = list(
@@ -298,7 +300,7 @@ for index, (h, r, up) in enumerate(details):
                     "event_date", ascending=False
                 )
                 st.markdown("**Fights in selected range**")
-                st.caption(f"{len(selected_fights):,} fights; select a row to open its bout.")
+                st.caption(f"{len(selected_fights):,} fights. {components.NAV_HINT}")
                 shown_range = components.format_dates(
                     selected_fights[
                         [
@@ -323,23 +325,19 @@ for index, (h, r, up) in enumerate(details):
                         "feature_value": plot_feature_label(feature),
                     }
                 )
-                picked = st.dataframe(
+                components.nav_table(
                     shown_range,
-                    hide_index=True,
-                    width="stretch",
-                    on_select="rerun",
-                    selection_mode="single-row",
                     key=f"range_fights_{index}_{range_id}",
+                    fighter_ids={
+                        "Fighter": selected_fights["fighter_id"],
+                        "Opponent": selected_fights["opp_id"],
+                    },
+                    bout_ids=selected_fights["bout_id"],
                 )
-                if picked.selection.rows:
-                    st.session_state["bout_id"] = selected_fights.iloc[picked.selection.rows[0]][
-                        "bout_id"
-                    ]
-                    st.switch_page("pages/1_Bout.py")
         st.markdown("**Previous matching fights**")
         st.caption(
             "Each row is the fighter who matched the condition; the result is from their perspective. "
-            "Select a row to open the fight."
+            + components.NAV_HINT
         )
         if not r.n:
             st.caption("No previous fights match this hypothesis.")
@@ -364,7 +362,7 @@ for index, (h, r, up) in enumerate(details):
             finally:
                 con.close()
             shown = components.format_dates(
-                previous.drop(columns=["bout_id"]), dates=("event_date",)
+                previous.drop(columns=["bout_id", "fighter_id", "opp_id"]), dates=("event_date",)
             ).rename(
                 columns={
                     "event_date": "Date",
@@ -375,15 +373,13 @@ for index, (h, r, up) in enumerate(details):
                     "method": "Method",
                 }
             )
-            selection = st.dataframe(
+            components.nav_table(
                 shown,
-                hide_index=True,
-                width="stretch",
-                on_select="rerun",
-                selection_mode="single-row",
                 key=f"history_fights_{index}_{page}",
+                fighter_ids={
+                    "Matching fighter": previous["fighter_id"],
+                    "Opponent": previous["opp_id"],
+                },
+                bout_ids=previous["bout_id"],
             )
-            if selection.selection.rows:
-                st.session_state["bout_id"] = previous.iloc[selection.selection.rows[0]]["bout_id"]
-                st.switch_page("pages/1_Bout.py")
         st.code(schema.to_yaml(h), language="yaml")
