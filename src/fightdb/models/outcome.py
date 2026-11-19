@@ -288,6 +288,30 @@ def win_contributions(model: FittedModels, side: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def method_contributions(
+    model: FittedModels, side: pd.DataFrame, cls: str, versus: str
+) -> pd.DataFrame:
+    """How each input tilts the method model between two endings for one side (first row of
+    `side`), e.g. "win_ko" versus "win_dec".
+
+    The method model is multinomial, so log(P(cls) / P(versus)) is exactly the intercept gap plus
+    the sum of the pushes below. It is from this side's point of view only; the shown chances
+    average both fighters' points of view, so the two can differ slightly."""
+    feats = METHOD_DIFF_FEATURES + LEVEL_FEATURES
+    s = add_matchup_diffs(side.iloc[[0]])
+    x = model.method_scaler.transform(_matrix(s, feats))[0]
+    classes = list(model.method.classes_)
+    i, j = classes.index(cls), classes.index(versus)
+    coef = model.method.coef_
+    return pd.DataFrame(
+        {
+            "feature": feats,
+            "value": s.reindex(columns=feats).astype(float).iloc[0].to_numpy(),
+            "push": (coef[i] - coef[j]) * x,
+        }
+    ).assign(intercept=float(model.method.intercept_[i] - model.method.intercept_[j]))
+
+
 IMPORTANCE_COLUMNS = [
     "feature",
     "log_loss_without",

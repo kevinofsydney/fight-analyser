@@ -204,13 +204,18 @@ def edge_table(
     return pd.DataFrame(rows)
 
 
+def edge_display(table: pd.DataFrame) -> pd.DataFrame:
+    """`edge_table` with chances as whole percentages, for `EDGE_COLUMNS`."""
+    return table.assign(**{c: 100 * table[c] for c in ("Model chance", "Bookmakers' chance")})
+
+
 EDGE_COLUMNS = {
-    "Model chance": st.column_config.NumberColumn(format="percent"),
+    "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
     "Model fair odds": st.column_config.NumberColumn(
         format="%.2f", help="1 ÷ model chance: the decimal price at which a bet breaks even."
     ),
     "Bookmakers' chance": st.column_config.NumberColumn(
-        format="percent",
+        format="%.0f%%",
         help="The chance implied by the bookmakers' prices with their margin removed.",
     ),
     "Best price": st.column_config.NumberColumn(format="%.2f"),
@@ -292,3 +297,142 @@ def result_text(a: pd.Series, b: pd.Series) -> str:
     if _num(a.get("no_contest")) == 1:
         return f"**No contest**{when}."
     return "Result not recorded."
+
+
+def _method_input_label(feature: str, self_name: str, opp_name: str) -> str:
+    who = ""
+    key = feature
+    if feature.startswith("diff_"):
+        key, who = feature.removeprefix("diff_"), "Gap in "
+    elif feature.startswith("self_"):
+        key, who = feature.removeprefix("self_"), f"{self_name}: "
+    elif feature.startswith("opp_"):
+        key, who = feature.removeprefix("opp_"), f"{opp_name}: "
+    raw = key.endswith("_raw")
+    base = key.removesuffix("_raw")
+    label = BY_KEY[base].label if base in BY_KEY else PROJECTION_LABELS.get(base, base)
+    label = label if who == "Gap in " or not label else label[0].lower() + label[1:]
+    return f"{who}{label}" + (" (unadjusted)" if raw else "")
+
+
+def _method_input_value(feature: str, value: float) -> str:
+    key = feature.removeprefix("diff_").removeprefix("self_").removeprefix("opp_")
+    return _fmt(key.removesuffix("_raw"), value, signed=feature.startswith("diff_"))
+
+
+def render_ending_breakdown(
+    a: pd.Series, b: pd.Series, model: outcome.FittedModels | None, top_n: int = 6
+) -> None:
+    """Why the model's likeliest ending is the likeliest: win chance × how that fighter's wins
+    usually come, then which inputs tilt the method split."""
+    outcomes = likely_outcomes(a, b)
+    if outcomes is None:
+        st.caption("The model has no method prediction for this bout.")
+        return
+    sides = {"a": a, "b": b}
+    names = {"a": str(a.fighter_name), "b": str(b.fighter_name)}
+    rows = []
+    for tag, side in sides.items():
+        pw = _num(side.get("self_p_win"))
+        for m in ("ko", "sub", "dec"):
+            p = _num(side.get(f"self_p_win_{m}"))
+            rows.append(
+                {
+                    "Fighter": names[tag],
+                    "Ending": f"{names[tag]} by {METHOD_NAMES[m]}",
+                    "Win chance": pw,
+                    "Share of their wins": p / pw if pw > 0 else math.nan,
+                    "Chance of this ending": p,
+                }
+            )
+    table = pd.DataFrame(rows).sort_values("Chance of this ending", ascending=False)
+    top = outcomes.iloc[0]
+    tag, m = str(top["key"]).split("_")
+    win_side = sides[tag]
+    pw = _num(win_side.get("self_p_win"))
+    st.markdown(
+        "The model works out each of the six endings in two steps: **who wins** (the win model, "
+        "explained above) × **how that fighter's wins split** between KO/TKO, submission and "
+        "decision (a second model trained on how fights ended). "
+        f"The likeliest ending is **{top['label']}**: {names[tag]} wins {pw:.0%} of the time × "
+        f"{top['p'] / pw:.0%} of those wins by {METHOD_NAMES[m]} = **{top['p']:.0%}**."
+    )
+    st.altair_chart(
+        alt.Chart(table)
+        .mark_bar(cornerRadiusEnd=4, height={"band": 0.7})
+        .encode(
+            x=alt.X("Chance of this ending:Q", title=None, axis=alt.Axis(format="%")),
+            y=alt.Y(
+                "Ending:N",
+                sort=list(table["Ending"]),
+                title=None,
+                axis=alt.Axis(labelLimit=320),
+            ),
+            color=alt.Color(
+                "Fighter:N",
+                scale=alt.Scale(domain=list(names.values()), range=SIDE_COLORS),
+                legend=None,
+            ),
+            tooltip=[
+                "Ending:N",
+                alt.Tooltip("Win chance:Q", format=".0%"),
+                alt.Tooltip("Share of their wins:Q", format=".0%"),
+                alt.Tooltip("Chance of this ending:Q", format=".0%"),
+            ],
+        )
+        .properties(height=alt.Step(30)),
+        width="stretch",
+    )
+    pct_cols = ["Win chance", "Share of their wins", "Chance of this ending"]
+    st.dataframe(
+        table.drop(columns=["Fighter"]).assign(**{c: 100 * table[c] for c in pct_cols}),
+        hide_index=True,
+        width="stretch",
+        column_config={c: st.column_config.NumberColumn(format="%.0f%%") for c in pct_cols},
+    )
+    second = outcomes.iloc[1]
+    if str(second["key"]).split("_")[0] != tag:
+        st.caption(
+            f"Runner-up: {second['label']} ({second['p']:.0%}). The two differ mainly in who "
+            "wins, which the win-model breakdown explains."
+        )
+    if model is None:
+        return
+    other = [x for x in ("ko", "sub", "dec") if x != m]
+    side_df = pd.DataFrame([win_side])
+    opp_name = names["b" if tag == "a" else "a"]
+    st.markdown(
+        f"**What tilts {names[tag]}'s wins towards {METHOD_NAMES[m]}**: the inputs that moved the "
+        "method split most, for the two alternatives."
+    )
+    cols = st.columns(2)
+    for col, alt_m in zip(cols, other, strict=True):
+        c = outcome.method_contributions(model, side_df, f"win_{m}", f"win_{alt_m}")
+        c = c.reindex(c["push"].abs().sort_values(ascending=False).index).head(top_n)
+        with col:
+            st.caption(f"{METHOD_NAMES[m]} rather than {METHOD_NAMES[alt_m]}")
+            st.dataframe(
+                pd.DataFrame(
+                    {
+                        "Input": [
+                            _method_input_label(f, names[tag], opp_name) for f in c["feature"]
+                        ],
+                        "Value": [
+                            _method_input_value(f, v)
+                            for f, v in zip(c["feature"], c["value"], strict=True)
+                        ],
+                        "Pushes towards": [
+                            METHOD_NAMES[m] if p > 0 else METHOD_NAMES[alt_m] for p in c["push"]
+                        ],
+                        "Push": c["push"],
+                    }
+                ),
+                hide_index=True,
+                width="stretch",
+                column_config={"Push": st.column_config.NumberColumn(format="%+.2f")},
+            )
+    st.caption(
+        "Push is the change in log-odds between the two endings. Gaps are this fighter minus "
+        "the opponent; index values are relative to the division average (100). Pushes are from "
+        f"{names[tag]}'s point of view; the chances above average both fighters' points of view."
+    )

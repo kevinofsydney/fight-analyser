@@ -238,8 +238,8 @@ def test_bout_shows_historical_closing_prices(db, tmp_path, monkeypatch):
         at.session_state["bout_id"] = bout_id
         at.run()
         assert not at.exception, [e.value for e in at.exception]
-        assert any("-200 to -150" in metric.value for metric in at.metric)
-        assert any("+120 to +150" in metric.value for metric in at.metric)
+        odds = next(df.value for df in at.dataframe if "American" in df.value.columns)
+        assert set(odds["American"]) == {"-200 to -150", "+120 to +150"}
         edge = next(df.value for df in at.dataframe if "Bookmakers' chance" in df.value.columns)
         assert edge["Best price"].round(4).tolist() == [round(1 + 100 / 150, 4), 2.5]
         assert edge["Edge"].iloc[0] == pytest.approx(100 * (p_a - 0.62))
@@ -294,7 +294,7 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert {"1.75", "2.15"}.issubset(set(tables[0].iloc[0].astype(str)))
         edge = next(df.value for df in at.dataframe if "Bookmakers' chance" in df.value.columns)
         overround = 1 / 1.75 + 1 / 2.15
-        assert edge["Bookmakers' chance"].iloc[0] == pytest.approx(1 / 1.75 / overround)
+        assert edge["Bookmakers' chance"].iloc[0] == pytest.approx(100 / 1.75 / overround)
         assert edge["Best price"].tolist() == [1.75, 2.15]
         assert any(m.value == "**Betting line movement**" for m in at.markdown)
         assert sum("fetched_at" in c.proto.spec for c in at.get("vega_lite_chart")) == 1
@@ -449,7 +449,7 @@ def test_bout_page_breaks_down_the_win_probability(db):
     assert any(e.label == "How the model calculated these chances" for e in at.expander)
     total = next(m.value for m in at.markdown if m.value.startswith("**Total push"))
     assert f"= {p_win:.0%}**" in total
-    factors = next(df.value for df in at.dataframe if "Push" in df.value.columns)
+    factors = next(df.value for df in at.dataframe if "Weight" in df.value.columns)
     assert len(factors) == 20 and {"Weight", "Typical gap", "Gap"} <= set(factors.columns)
 
 

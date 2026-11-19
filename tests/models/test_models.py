@@ -261,3 +261,18 @@ def test_weights_saved_before_an_input_existed_give_it_no_weight(synthetic_db):
     old = weights[~weights["feature"].str.contains("pro_")]
     p = outcome.from_weights(old).predict(sides)
     assert p[["p_win", "p_win_ko", "p_distance"]].notna().all().all()
+
+
+def test_method_pushes_add_up_to_the_log_ratio_of_two_endings(synthetic_db):
+    sides = synthetic_db.execute("SELECT * FROM bout_sides WHERE status = 'completed'").df()
+    model = outcome.from_weights(outcome.model_weights(outcome.fit(sides), None))
+    feats = outcome.METHOD_DIFF_FEATURES + outcome.LEVEL_FEATURES
+    classes = list(model.method.classes_)
+    for _, row in sides.head(10).iterrows():
+        side = row.to_frame().T
+        x = model.method_scaler.transform(outcome._matrix(outcome.add_matchup_diffs(side), feats))
+        probs = model.method.predict_proba(x)[0]
+        c = outcome.method_contributions(model, side, "win_ko", "win_dec")
+        total = c["push"].sum() + c["intercept"].iloc[0]
+        ratio = probs[classes.index("win_ko")] / probs[classes.index("win_dec")]
+        assert total == pytest.approx(np.log(ratio))
