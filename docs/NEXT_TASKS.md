@@ -1,6 +1,6 @@
 # Next Tasks
 
-Updated 2026-11-09. This is the handoff file: read it after [AGENTS.md](../AGENTS.md) and [PRD.md](PRD.md). It says what exists, what's verified, and what is left to build, in task-sized pieces.
+Updated 2026-11-20. This is the handoff file: read it after [AGENTS.md](../AGENTS.md) and [PRD.md](PRD.md). It says what exists, what's verified, and what is left to build, in task-sized pieces.
 
 ## Where things stand
 
@@ -206,3 +206,58 @@ Not done: non-UFC fights carry no round data, so this rating starts at 1500 on U
 - **Walk-forward win model** (log loss 2012+ / 2020+): current 0.6367 / 0.6292. Removing `diff_streak` +0.0005 [−0.0002, +0.0012]; replacing it with last result or net of last 3 UFC results, +0.0005 to +0.0006; adding net of last 3 on top +0.0002; adding net of last 3 pro fights (all promotions) −0.0003 [−0.0017, +0.0010]. None is distinguishable from zero. Nothing shipped; `diff_streak` stays.
 
 **Bookmakers vs time:** the closing line's Brier was 0.20–0.22 through 2022 and 0.198–0.201 since 2024; the model's gap to it has stayed 0.01–0.02 throughout. That fits the flattening of the value-picks profit line since 2023.
+
+## App changes on 2026-11-20 (M11, M12, M13)
+
+| ID | What changed |
+|----|--------------|
+| M11 | **Fighter names open the Fighter page** everywhere names are listed. Tables use single-cell selection: a name cell opens that fighter (`?fighter=<id>`), any other cell opens the bout. Headings use `st.page_link`. Both stay in the same Streamlit session, so the password isn't asked again (a plain link would start a new session). **Model performance** gained the last three cards and "Betting the model": $100 on every pick vs Kelly-sized by edge (bankroll and fraction adjustable), for the last three cards, this year and all time. |
+| M12 | **Bout page:** closing odds as a table; "How the model picks the most likely ending" (win chance × share of that fighter's wins by each method, then the inputs that tilt the method split, from `outcome.method_contributions`); **expected fight stats** (per-round projections × expected rounds, where expected rounds = P(distance) × full length + otherwise the average finished UFC fight of that length); **saved hypotheses** as a table with a so-what line, saying plainly that they don't change the prediction and whether the model already uses each input. |
+| M13 | **Suggested bets** on the Bout page: moneyline (feed prices), method of victory, how the fight ends and goes the distance (prices typed in by hand, since the feed has no props). A bet needs an expected return of at least 5%; stakes are quarter Kelly on a 100-unit bankroll, rounded down to quarter units and capped at 3 units; 1 unit = $50 by default. Method and distance markets are skipped while their calibration gate fails. Round betting isn't offered because the model doesn't predict the round of a finish. |
+
+Betting results with a $1,000 bankroll at quarter Kelly (best closing price, so slightly flattering): all fights since 2012, $100 a pick +$33,747 on $710,300 staked (+4.8%) and edge-sized +$17,210 on $342,636 (+5.0%); 2026 so far, roughly break-even and −3.9%. The closing line's Brier score improved from 0.21–0.22 before 2023 to about 0.20 since 2024 while the model's gap to it stayed at 0.01–0.02.
+
+## Peak age and ring rust on 2026-11-20
+
+`scripts/age_layoff_experiment.py`, run on the 2026-11-19 release rebuilt with M9.
+
+**Age curve by division.** Win chance against an opponent aged 29–30 from a logistic regression on age bands (own minus opponent's), UFC bouts 2005+. Age alone:
+
+| Division | <25 | 25-26 | 27-28 | 29-30 | 31-32 | 33-34 | 35-36 | 37+ |
+|---|---|---|---|---|---|---|---|---|
+| All | 58% | 54% | 54% | 50% | 46% | 43% | 39% | 33% |
+| Fly & bantam | 65% | 57% | 57% | 50% | 47% | 42% | 43% | 32% |
+| Feather & light | 60% | 54% | 58% | 50% | 45% | 42% | 34% | 31% |
+| Welter & middle | 54% | 52% | 49% | 50% | 47% | 44% | 39% | 30% |
+| Light heavy & heavy | 56% | 51% | 54% | 50% | 46% | 41% | 42% | 37% |
+| Women | 56% | 58% | 55% | 50% | 48% | 46% | 40% | 33% |
+
+With experience, ratings and skills held equal, the curve is the same shape (all divisions: 58% under 25 down to 31% at 37+). **No division peaks at 30–33.** Younger is better throughout, slightly flatter at welter/middle and heavier. Likely reason: a 23-year-old in the UFC is already an elite prospect, and inexperience shows up in the experience and rating inputs, not in age.
+
+**Ring rust**, results vs the model's out-of-sample chance by time since the last UFC fight (2012+):
+
+| Layoff | Fighters | Won | Model expected | Gap |
+|---|---|---|---|---|
+| <4 months | 2,730 | 50.7% | 51.2% | −0.6 ± 1.7 |
+| 4–8 months | 6,243 | 51.9% | 50.5% | +1.4 ± 1.2 |
+| 8–12 months | 1,991 | 50.4% | 49.6% | +0.8 ± 2.1 |
+| 12–18 months | 829 | 45.1% | 47.7% | −2.6 ± 3.2 |
+| 18–24 months | 249 | 36.9% | 47.5% | −10.6 ± 5.8 |
+| 2+ years | 225 | 48.9% | 47.9% | +1.0 ± 6.0 |
+
+The 18–24-month dip is the only gap outside its interval, on 249 fighters, and it doesn't continue past 2 years, so it looks like noise or selection (injury layoffs), not a steady rust effect. The bookmakers priced it partly (44.6%).
+
+**Walk-forward win model** (log loss 2012+ / 2020+; current 0.6367 / 0.6292):
+
+| Variant | Change, 2012+ (95% interval) |
+|---|---|
+| No age input | +0.0110 [+0.0077, +0.0142] |
+| Age replaced by distance from 31 | +0.0110 [+0.0077, +0.0142] |
+| Age replaced by under-29 and over-33 penalties | +0.0017 [−0.0000, +0.0034] |
+| Current + under-29 and over-33 penalties | −0.0000 [−0.0010, +0.0010] |
+| Current + log days since last fight | +0.0005 [+0.0001, +0.0009] |
+| Current + layoff over 1 year | +0.0003 [−0.0011, +0.0018] |
+| Current + layoff over 18 months | −0.0000 [−0.0009, +0.0008] |
+| Current + layoff over 1 year × years past 33 | −0.0003 [−0.0011, +0.0006] |
+
+Age matters a lot (removing it costs 0.011), but the straight-line gap is already the best shape. Nothing shipped. Brian Ortega (UFC Fight Night, 2026-11-21) is coming off 455 days out at 35.7; the model counts his age, not the layoff.
