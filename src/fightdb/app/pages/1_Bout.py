@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from fightdb.analytics import hypothesis, schema
-from fightdb.app import components, data, explain
+from fightdb.app import components, data, explain, fight_projection, hypothesis_view
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, STATS
 from fightdb.models import outcome, ratings
@@ -374,17 +374,26 @@ if a.status == "completed":
 # --- Market odds ---------------------------------------------------------------------------
 st.subheader("Fight odds")
 if a.status == "completed":
-    columns = st.columns(2)
-    for col, side in zip(columns, (a, b), strict=True):
+    odds_rows = []
+    for side in (a, b):
         price = closing.loc[side.fighter_id] if side.fighter_id in closing.index else None
-        col.metric(
-            f"{side.fighter_name} · closing odds",
-            components.format_closing_range(price["close_low"], price["close_high"])
+        values = (
+            sorted({int(x) for x in price[["close_low", "close_high"]].dropna() if x != 0})
             if price is not None
-            else "—",
+            else []
         )
+        decimal = [components.decimal_odds_from_american(v) for v in values]
+        odds_rows.append(
+            {
+                "Fighter": side.fighter_name,
+                "Closing price (decimal)": " – ".join(f"{d:.2f}" for d in decimal) or "—",
+                "American": " to ".join(components.format_american_odds(v) for v in values) or "—",
+            }
+        )
+    st.dataframe(pd.DataFrame(odds_rows), hide_index=True, width="stretch")
     st.caption(
-        "Historical closing price range from fight-canon-db; availability varies by fight and bookmaker."
+        "Closing price range across bookmakers, from fight-canon-db; availability varies by "
+        "fight and bookmaker."
     )
     best = [
         components.decimal_odds_from_american(
@@ -398,11 +407,13 @@ if a.status == "completed":
     if not any(math.isnan(m) for m in market) and not math.isnan(num(a.self_p_win)):
         st.markdown("**Model vs bookmakers (closing)**")
         st.dataframe(
-            explain.edge_table(
-                [str(a.fighter_name), str(b.fighter_name)],
-                [num(a.self_p_win), num(b.self_p_win)],
-                market,
-                [math.nan if o is None else o for o in best],
+            explain.edge_display(
+                explain.edge_table(
+                    [str(a.fighter_name), str(b.fighter_name)],
+                    [num(a.self_p_win), num(b.self_p_win)],
+                    market,
+                    [math.nan if o is None else o for o in best],
+                )
             ),
             hide_index=True,
             width="stretch",
@@ -436,12 +447,14 @@ else:
         if view is not None and not math.isnan(num(a.self_p_win)):
             st.markdown("**Model vs bookmakers**")
             st.dataframe(
-                explain.edge_table(
-                    [str(a.fighter_name), str(b.fighter_name)],
-                    [num(a.self_p_win), num(b.self_p_win)],
-                    view["market_p"].tolist(),
-                    view["best_odds"].tolist(),
-                ).assign(**{"Best price at": view["best_book"].tolist()}),
+                explain.edge_display(
+                    explain.edge_table(
+                        [str(a.fighter_name), str(b.fighter_name)],
+                        [num(a.self_p_win), num(b.self_p_win)],
+                        view["market_p"].tolist(),
+                        view["best_odds"].tolist(),
+                    ).assign(**{"Best price at": view["best_book"].tolist()})
+                ),
                 hide_index=True,
                 width="stretch",
                 column_config=explain.EDGE_COLUMNS,
@@ -571,12 +584,15 @@ if not math.isnan(pd_):
         f"Chance the fight goes the distance: {pd_:.0%} (division average {num(base['dist']):.0%})."
     )
 
+model_year = explain.model_year_for(str(a.status), int(a.year))
+win_model = None if math.isnan(num(a.self_p_win)) else explain.load_model(model_year)
+with st.expander("How the model picks the most likely ending", expanded=True):
+    explain.render_ending_breakdown(a, b, win_model)
+
 with st.expander("How the model calculated these chances"):
     if math.isnan(num(a.self_p_win)):
         st.caption("The model has no prediction for this bout.")
     else:
-        model_year = explain.model_year_for(str(a.status), int(a.year))
-        win_model = explain.load_model(model_year)
         if win_model is None:
             st.caption("The breakdown appears after the next daily refresh.")
         else:
@@ -706,6 +722,53 @@ with st.expander("What goes into the model outlook?"):
     )
 
 # --- Matchup projections -------------------------------------------------------------------
+st.subheader("Expected fight stats")
+rounds_scheduled = int(num(a.scheduled_rounds)) if not math.isnan(num(a.scheduled_rounds)) else 3
+finish_secs = data.query(
+    """SELECT avg(fight_seconds) AS s FROM bouts
+       WHERE status = 'completed' AND method_group IN ('ko_tko', 'sub')
+         AND scheduled_rounds = ? AND fight_seconds > 0""",
+    [rounds_scheduled],
+)["s"].iloc[0]
+p_dist = num(a.self_p_distance)
+exp_rounds = fight_projection.expected_rounds(p_dist, rounds_scheduled, num(finish_secs))
+full_distance = st.toggle(
+    f"Assume it goes the full {rounds_scheduled} rounds",
+    value=False,
+    help="Off: totals are scaled to the fight's expected length, allowing for the chance of a "
+    "finish. On: totals for a fight that goes the distance.",
+)
+used_rounds = float(rounds_scheduled) if full_distance else exp_rounds
+fight_totals = fight_projection.totals(a, b, used_rounds)
+fight_totals[[str(a.fighter_name), str(b.fighter_name)]] = fight_totals[
+    [str(a.fighter_name), str(b.fighter_name)]
+].round(1)
+st.dataframe(
+    fight_totals,
+    hide_index=True,
+    width="stretch",
+    column_config={
+        str(a.fighter_name): st.column_config.NumberColumn(format="%.1f"),
+        str(b.fighter_name): st.column_config.NumberColumn(format="%.1f"),
+    },
+)
+if full_distance:
+    st.caption(f"Over {rounds_scheduled} full rounds ({rounds_scheduled * 5} minutes).")
+else:
+    st.caption(
+        f"Expected fight length {exp_rounds:.1f} rounds ({exp_rounds * 5:.0f} minutes): "
+        f"{p_dist:.0%} chance it goes the full {rounds_scheduled * 5} minutes, otherwise the "
+        f"average finished {rounds_scheduled}-round UFC fight ({num(finish_secs) / 60:.1f} "
+        "minutes)."
+        if not math.isnan(p_dist) and not math.isnan(num(finish_secs))
+        else f"No finish model for this bout, so totals assume {rounds_scheduled} full rounds."
+    )
+st.caption(
+    "Each number is the per-round projection below (each fighter's rates, adjusted for what "
+    "this opponent allows) times the rounds. Takedowns defended are the opponent's expected "
+    "attempts that fail. These are averages: a fight that ends early has fewer of everything."
+)
+
 st.subheader("Projected per round")
 proj_rows = [
     ("Takedowns landed", "self_x_td_r", "{:.2f}"),
@@ -808,22 +871,65 @@ st.caption(
 
 # --- Matching hypotheses ---------------------------------------------------------------------
 st.subheader("Saved hypotheses that apply")
-found = False
+hyp_rows: list[dict[str, object]] = []
+hyp_ids: list[object] = []
 con = data.connect()
 try:
     for _path, h in schema.load_all(get_settings().hypotheses_dir):
         try:
             m = hypothesis.matches_upcoming(con, h) if a.status == "scheduled" else pd.DataFrame()
             hits = m[m["bout_id"] == bout_id] if not m.empty else m
-            for row in hits.itertuples():
+            for hit in hits.itertuples():
                 r = hypothesis.evaluate(con, h, keep_bouts=False)
-                found = True
-                st.markdown(f"**{h.title}** applies to **{row.fighter_name}**.  \n{r.verdict}")
+                side = a if hit.fighter_id == a.fighter_id else b
+                hyp_rows.append(
+                    hypothesis_view.row(h, r, str(hit.fighter_name), num(side.self_p_win))
+                )
+                hyp_ids.append(hit.fighter_id)
         except duckdb.Error as exc:  # one bad hypothesis must not break the page
             logging.getLogger(__name__).warning("hypothesis %s failed: %s", h.id, exc)
 finally:
     con.close()
-if not found:
+if hyp_rows:
+    st.markdown(
+        "Patterns from past fights that fit this bout. **They don't change the model's "
+        "prediction**: the model has its own inputs, and most of these patterns (age, reach) are "
+        "already among them. A pattern only adds something when it's reliable *and* the model "
+        "doesn't use it; those are listed first."
+    )
+    hyp = hypothesis_view.table(hyp_rows)
+    components.nav_table(
+        hyp.drop(columns=["So what"]),
+        key="bout_hypotheses",
+        fighter_ids={"Applies to": pd.Series(hyp_ids).iloc[hyp.index].reset_index(drop=True)},
+        column_config={
+            "History": st.column_config.TextColumn(
+                help="How often fighters who matched this pattern got the outcome, over every "
+                "matching past fight."
+            ),
+            "Usual rate": st.column_config.TextColumn(
+                help="What you'd expect without the pattern: 50% for winning, or the overall "
+                "rate for other outcomes."
+            ),
+            "Reliable?": st.column_config.TextColumn(
+                help="Yes if the gap is unlikely to be chance (p < 0.05)."
+            ),
+            "In the model?": st.column_config.TextColumn(
+                help="Whether the model that predicts this outcome already uses the thing the "
+                "pattern is about."
+            ),
+        },
+    )
+    st.markdown(
+        "\n".join(
+            f"- **{r['Pattern']}** ({r['Applies to']}): {r['So what']}" for _, r in hyp.iterrows()
+        )
+    )
+    st.caption(
+        "Fight-wear patterns are kept out of the model on purpose. Click a name to open that "
+        "fighter."
+    )
+else:
     st.caption(
         "None of the saved hypotheses' conditions hold for this bout."
         if a.status == "scheduled"
