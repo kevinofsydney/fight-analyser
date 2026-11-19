@@ -102,7 +102,8 @@ def text(values: pd.Series, fmt: str) -> list[str]:
 
 table = pd.DataFrame(
     {
-        "Bout": card["fighter_name"] + " vs " + card["opp_name"],
+        "Fighter": card["fighter_name"],
+        "Opponent": card["opp_name"],
         "Model pick": card["pick"].fillna("—"),
         "Price": text(card["price"], "{:.2f}"),
         "Model chance": text(card["pick_p"], "{:.0%}"),
@@ -118,16 +119,23 @@ table = pd.DataFrame(
 if not is_past:
     table = table.drop(columns=["Result", "Pick", "Profit"])
 help_text = {k: v.get("help") for k, v in explain.EDGE_COLUMNS.items()}
-st.dataframe(
+pick_id = (
+    card["fighter_id"]
+    .where(card["pick"] == card["fighter_name"], card["opp_id"])
+    .where(card["has_pick"])
+)
+components.nav_table(
     table,
-    hide_index=True,
-    width="stretch",
+    key=f"vp_table_{event_id}",
+    fighter_ids={"Fighter": card["fighter_id"], "Opponent": card["opp_id"], "Model pick": pick_id},
+    bout_ids=card["bout_id"],
     column_config={
         **{k: st.column_config.TextColumn(help=h) for k, h in help_text.items() if k in table},
         "Price": st.column_config.TextColumn(help="Best decimal price."),
     },
 )
 st.caption(
+    f"{components.NAV_HINT} "
     "Bouts without a pick are those where the model and the bookmakers are within the minimum "
     "edge. Past cards use the closing line where available, otherwise the last bookmaker prices "
     "fetched before the event."

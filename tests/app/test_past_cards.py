@@ -77,3 +77,32 @@ def test_score_without_market_column():
     # 50% counts as a pick for the first-listed fighter.
     assert s["model_pick"].iloc[0] == "A1" and s["model_right"].iloc[0] == 0.0
     assert s["market_pick"].iloc[0] is None
+
+
+def test_bets_flat_and_edge_sized():
+    df = pd.DataFrame(
+        [
+            # Model 70% on A at 2.0: flat backs A, Kelly f = (1.4 - 1) / 1 = 0.4 on A. A wins.
+            _bout("1", "e2", 0.7, 1, 0, best_a=2.0, best_b=1.8),
+            # Model 60% on A at 1.5: flat backs A; A has no value (0.9 < 1), B at 3.0 has
+            # 0.4 * 3 - 1 = 0.2 > 0, f = 0.1 on B. A wins: flat +50, edge loses its stake.
+            _bout("2", "e2", 0.6, 1, 0, best_a=1.5, best_b=3.0),
+            # Draw: both refund.
+            _bout("3", "e2", 0.7, 0, 0, best_a=2.0, best_b=1.8),
+            # No price: no bet.
+            _bout("4", "e1", 0.7, 1, 0),
+        ]
+    )
+    b = past_cards.add_bets(past_cards.score(df), bankroll=1000, kelly_fraction=0.5)
+    assert b["flat_profit"].iloc[0] == 100 and b["flat_profit"].iloc[1] == 50
+    assert b["flat_profit"].iloc[2] == 0 and math.isnan(b["flat_profit"].iloc[3])
+    assert b["edge_stake"].iloc[0] == 200 and b["edge_profit"].iloc[0] == 200
+    assert b["edge_pick"].iloc[1] == "B2" and b["edge_stake"].iloc[1] == 50
+    assert b["edge_profit"].iloc[1] == -50
+    assert b["edge_profit"].iloc[2] == 0
+
+    s = past_cards.betting_summary(b).set_index("Strategy")
+    flat = s.loc["$100 on every pick"]
+    assert flat["Bets"] == 3 and flat["Staked"] == 300 and flat["Profit"] == 150
+    edge = s.loc["Sized by edge"]
+    assert edge["Bets"] == 3 and edge["Profit"] == 150

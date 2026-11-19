@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from fightdb.app import components, data, explain
+from fightdb.app import card_view, components, data, explain, past_cards
 from fightdb.models import outcome
 
 components.page("Model performance", "📈")
@@ -105,6 +105,122 @@ st.altair_chart(
     )
     .properties(height=260),
     width="stretch",
+)
+
+st.subheader("The last three cards")
+scored_all = card_view.load_scored()
+bankroll, kelly = card_view.bet_settings("performance")
+bets = past_cards.add_bets(scored_all, bankroll=bankroll, kelly_fraction=kelly)
+last_cards = past_cards.by_card(bets).head(3)
+for i, ev in enumerate(last_cards.itertuples()):
+    card = card_view.in_card_order(bets[bets["event_id"] == ev.event_id])
+    with st.expander(
+        f"**{ev.event_name}** · {components.fmt_date(ev.event_date)}", expanded=i == 0
+    ):
+        card_view.card_metrics(card)
+        card_view.card_table(card, key=f"perf_card_{ev.event_id}")
+st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
+components.page_link(st, "pages/12_Previous_Cards.py", "Every earlier card", "🗓️")
+
+st.subheader("Betting the model")
+st.markdown(
+    "Two ways of betting the model on every past fight with a price: **$100 on every pick** "
+    "(whoever the model favours, however small its lead), and **sized by edge** (only where "
+    "the model rates a fighter above the bookmakers' price, staking more the bigger that gap; "
+    "set the bankroll and Kelly fraction above). Draws and no contests refund the stake."
+)
+bets["year"] = pd.to_datetime(bets["event_date"]).dt.year
+periods = {
+    "Last three cards": bets["event_id"].isin(last_cards["event_id"]),
+    f"{bets['year'].max()} so far": bets["year"] == bets["year"].max(),
+    f"All fights since {bets['year'].min()}": pd.Series(True, index=bets.index),
+}
+money_table = pd.concat(
+    [past_cards.betting_summary(bets[mask]).assign(Period=name) for name, mask in periods.items()]
+)[["Period", "Strategy", "Bets", "Staked", "Profit", "Return"]]
+st.dataframe(
+    money_table,
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Staked": st.column_config.NumberColumn(format="dollar"),
+        "Profit": st.column_config.NumberColumn(format="dollar"),
+        "Return": st.column_config.NumberColumn(
+            "Return per $1 staked", format="%+.3f", help="Profit divided by the amount staked."
+        ),
+    },
+)
+per_event = (
+    bets.groupby("event_date", as_index=False)[["flat_profit", "edge_profit"]]
+    .sum(min_count=1)
+    .dropna(how="all", subset=["flat_profit", "edge_profit"])
+    .sort_values("event_date")
+)
+running = per_event.assign(
+    **{
+        "$100 on every pick": per_event["flat_profit"].fillna(0).cumsum(),
+        "Sized by edge": per_event["edge_profit"].fillna(0).cumsum(),
+    }
+).melt("event_date", ["$100 on every pick", "Sized by edge"], var_name="Strategy")
+st.altair_chart(
+    alt.Chart(running, title="Running profit")
+    .mark_line(strokeWidth=2)
+    .encode(
+        x=alt.X(
+            "event_date:T",
+            title=None,
+            axis=alt.Axis(format="%Y", tickCount={"interval": "year", "step": 1}, grid=True),
+        ),
+        y=alt.Y("value:Q", title=None, axis=alt.Axis(format="$,.0f")),
+        color=alt.Color(
+            "Strategy:N",
+            scale=alt.Scale(domain=["$100 on every pick", "Sized by edge"], range=COLORS),
+            legend=alt.Legend(orient="top", title=None),
+        ),
+        tooltip=[
+            alt.Tooltip("event_date:T", title="Date", format="%-d %b %Y"),
+            "Strategy:N",
+            alt.Tooltip("value:Q", title="Running profit", format="$,.0f"),
+        ],
+    )
+    .properties(height=280),
+    width="stretch",
+)
+yearly = bets.groupby("year").agg(
+    flat_profit=("flat_profit", "sum"),
+    flat_staked=("flat_stake", lambda x: x[bets.loc[x.index, "flat_profit"].notna()].sum()),
+    edge_profit=("edge_profit", "sum"),
+    edge_staked=("edge_stake", lambda x: x[bets.loc[x.index, "edge_profit"].notna()].sum()),
+)
+yearly = yearly[yearly["flat_staked"] > 0].reset_index().sort_values("year", ascending=False)
+st.dataframe(
+    pd.DataFrame(
+        {
+            "Year": yearly["year"].astype(str),
+            "$100 bets: profit": yearly["flat_profit"],
+            "$100 bets: return": yearly["flat_profit"] / yearly["flat_staked"],
+            "Edge bets: staked": yearly["edge_staked"],
+            "Edge bets: profit": yearly["edge_profit"],
+            "Edge bets: return": (yearly["edge_profit"] / yearly["edge_staked"]).where(
+                yearly["edge_staked"] > 0
+            ),
+        }
+    ),
+    hide_index=True,
+    width="stretch",
+    column_config={
+        c: st.column_config.NumberColumn(format="dollar")
+        for c in ("$100 bets: profit", "Edge bets: staked", "Edge bets: profit")
+    }
+    | {
+        c: st.column_config.NumberColumn(format="%+.3f")
+        for c in ("$100 bets: return", "Edge bets: return")
+    },
+)
+st.caption(
+    "Prices are the better end of the closing range (fight-canon-db), or for recent cards "
+    "without one, the best of the last bookmaker prices fetched before the event. Taking the "
+    "best closing price flatters both strategies a little. Hindsight analysis, not betting advice."
 )
 
 st.subheader("Are the percentages honest?")

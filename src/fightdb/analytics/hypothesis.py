@@ -198,7 +198,8 @@ def matching_bout_sides(
     selected = ", ".join(f'"{column}"' for column in features)
     extra = f", {selected}" if selected else ""
     return con.execute(
-        f"""SELECT bout_id, event_date, event_name, fighter_name, opp_name, result, method{extra}
+        f"""SELECT bout_id, fighter_id, opp_id, event_date, event_name, fighter_name, opp_name,
+                   result, method{extra}
             FROM bout_sides WHERE {population} AND ({condition})
             ORDER BY event_date DESC, bout_id, fighter_id LIMIT ? OFFSET ?""",
         [*population_params, *condition_params, limit, offset],
@@ -220,7 +221,7 @@ def exploration_bout_sides(
         clause = f" AND ({condition})"
         params += condition_params
     return con.execute(
-        f'''SELECT bout_id, fighter_id, event_date, event_name, fighter_name, opp_name,
+        f'''SELECT bout_id, fighter_id, opp_id, event_date, event_name, fighter_name, opp_name,
                    result, method, CAST("{feature}" AS DOUBLE) AS feature_value, "{h.outcome}" AS outcome_value
             FROM bout_sides WHERE {population}{clause}
               AND "{feature}" IS NOT NULL AND isfinite(CAST("{feature}" AS DOUBLE))
@@ -291,7 +292,7 @@ def matches_upcoming(con: duckdb.DuckDBPyConnection, h: Hypothesis) -> pd.DataFr
         where.append("sex = ?")
         params.append(h.population.sex)
     return con.execute(
-        f"""SELECT bout_id, event_name, event_date, fighter_id, fighter_name, opp_name
+        f"""SELECT bout_id, event_name, event_date, fighter_id, fighter_name, opp_id, opp_name
             FROM bout_sides WHERE {" AND ".join(where)} AND ({cond_sql}) ORDER BY event_date""",
         params + cond_params,
     ).df()

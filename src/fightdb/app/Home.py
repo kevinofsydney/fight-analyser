@@ -47,7 +47,6 @@ with left:
                 continue
             card = card.reset_index(drop=True)
             show = card.assign(
-                bout=card["fighter_name"] + "  vs  " + card["opp_name"],
                 model=card["self_p_win"].map(lambda p: "—" if p != p else f"{p:.0%} / {1 - p:.0%}"),
                 age_gap=card["diff_age_years"].map(lambda d: "—" if d != d else f"{d:+.1f} y"),
                 reach_gap=card["diff_reach_cm"].map(components.fmt_diff_cm),
@@ -55,10 +54,11 @@ with left:
                 + " / "
                 + card["opp_ufc_fights"].astype(int).astype(str),
             )
-            selection = st.dataframe(
+            components.nav_table(
                 show[
                     [
-                        "bout",
+                        "fighter_name",
+                        "opp_name",
                         "weight_class",
                         "scheduled_rounds",
                         "model",
@@ -67,31 +67,25 @@ with left:
                         "exp",
                     ]
                 ],
-                hide_index=True,
-                width="stretch",
-                on_select="rerun",
-                selection_mode="single-row",
                 key=f"card_{ev.event_id}",
+                fighter_ids={"fighter_name": card["fighter_id"], "opp_name": card["opp_id"]},
+                bout_ids=card["bout_id"],
                 column_config={
-                    "bout": "Bout (main event first)",
+                    "fighter_name": "Fighter (main event first)",
+                    "opp_name": "Opponent",
                     "weight_class": "Weight class",
                     "scheduled_rounds": "Rds",
                     "model": st.column_config.TextColumn(
-                        "Model win %", help="Calibrated model, first fighter / second"
+                        "Model win %", help="Calibrated model, fighter / opponent"
                     ),
                     "age_gap": "Age gap",
                     "reach_gap": "Reach gap",
                     "exp": st.column_config.TextColumn(
-                        "UFC fights", help="Prior UFC bouts, first / second fighter"
+                        "UFC fights", help="Prior UFC bouts, fighter / opponent"
                     ),
                 },
             )
-            st.caption("Select a fight to open its Bout page.")
-            if selection.selection.rows:
-                st.session_state["bout_id"] = card.iloc[selection.selection.rows[0]]["bout_id"]
-                for key in ("bout_event_selector", "bout_selector"):
-                    st.session_state.pop(key, None)
-                st.switch_page("pages/1_Bout.py")
+            st.caption(components.NAV_HINT)
 
 st.caption(
     "Data: fight-canon-db and Greco1899 (from UFC Stats), upcoming cards from ESPN. "

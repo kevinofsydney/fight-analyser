@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+from streamlit.errors import StreamlitPageNotFoundError
 
 from fightdb import errorlog
 from fightdb.app import data
@@ -189,3 +190,65 @@ def level_vs_baseline(p: float, base: float) -> str:
     if r > 0.67:
         return "medium-low"
     return "low"
+
+
+FIGHTER_PAGE = "pages/8_Fighter.py"
+BOUT_PAGE = "pages/1_Bout.py"
+NAV_HINT = "Click a fighter's name to open their page, or any other cell to open the bout."
+
+
+def open_fighter(fighter_id: Any) -> None:
+    """Go to the Fighter page in this session (a plain link would start a new session and ask
+    for the password again)."""
+    st.switch_page(FIGHTER_PAGE, query_params={"fighter": str(fighter_id)})
+
+
+def open_bout(bout_id: Any) -> None:
+    st.session_state["bout_id"] = bout_id
+    for key in ("bout_event_selector", "bout_selector"):
+        st.session_state.pop(key, None)
+    st.switch_page(BOUT_PAGE)
+
+
+def fighter_link(name: Any, fighter_id: Any, *, container: Any = st, icon: str = "👤") -> None:
+    if fighter_id is None or pd.isna(fighter_id):
+        container.markdown(f"**{name}**")
+        return
+    page_link(container, FIGHTER_PAGE, str(name), icon, query_params={"fighter": str(fighter_id)})
+
+
+def page_link(
+    container: Any, page: str, label: str, icon: str, query_params: dict[str, str] | None = None
+) -> None:
+    """`st.page_link`, or plain bold text when the page can't be resolved: paths are relative
+    to the entrypoint, so they only resolve when the app runs from Home.py (not in page tests)."""
+    try:
+        container.page_link(page, label=label, icon=icon, query_params=query_params)
+    except StreamlitPageNotFoundError:
+        container.markdown(f"**{label}**")
+
+
+def nav_table(
+    shown: pd.DataFrame,
+    *,
+    key: str,
+    fighter_ids: dict[str, pd.Series] | None = None,
+    bout_ids: pd.Series | None = None,
+    **kwargs: Any,
+) -> None:
+    """A table where clicking a fighter-name cell opens that fighter and any other cell opens
+    the bout. `fighter_ids` maps a column of `shown` to the IDs behind it, row for row."""
+    fighter_ids = fighter_ids or {}
+    kwargs.setdefault("hide_index", True)
+    kwargs.setdefault("width", "stretch")
+    event = st.dataframe(shown, key=key, on_select="rerun", selection_mode="single-cell", **kwargs)
+    cells = event.selection.get("cells") or []
+    if not cells:
+        return
+    row, col = cells[0]
+    if col in fighter_ids:
+        fid = fighter_ids[col].iloc[int(row)]
+        if fid is not None and not pd.isna(fid):
+            open_fighter(fid)
+    elif bout_ids is not None:
+        open_bout(bout_ids.iloc[int(row)])

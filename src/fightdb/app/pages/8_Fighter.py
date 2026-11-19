@@ -34,6 +34,12 @@ labels = dict(
         strict=True,
     )
 )
+# A fighter link elsewhere in the app arrives as ?fighter=<id>. Apply each link once, so the
+# selectbox can still be changed afterwards.
+wanted = st.query_params.get("fighter")
+if wanted in labels and wanted != st.session_state.get("fighter_from_link"):
+    st.session_state["fighter_from_link"] = wanted
+    st.session_state["fighter_selector"] = wanted
 fid = st.selectbox(
     "Fighter",
     ids,
@@ -44,6 +50,9 @@ fid = st.selectbox(
 )
 if not fid:
     st.stop()
+if st.query_params.get("fighter") != fid:
+    st.query_params["fighter"] = fid
+    st.session_state["fighter_from_link"] = fid
 
 bio = data.query("SELECT * FROM fighters WHERE fighter_id = ?", [fid]).iloc[0]
 hist = data.query("SELECT * FROM bout_sides WHERE fighter_id = ? ORDER BY event_date", [fid])
@@ -144,17 +153,14 @@ shown = components.format_dates(
         "self_p_win": "Model win % (out-of-sample)",
     }
 )
-selection = st.dataframe(
+components.nav_table(
     shown,
-    hide_index=True,
-    width="stretch",
-    on_select="rerun",
-    selection_mode="single-row",
+    key=f"fighter_history_{fid}",
+    fighter_ids={"opp_name": fight_rows["opp_id"]},
+    bout_ids=fight_rows["bout_id"],
+    column_config={"opp_name": "Opponent"},
 )
-if selection.selection.rows:
-    st.session_state["bout_id"] = fight_rows.iloc[selection.selection.rows[0]]["bout_id"]
-    st.switch_page("pages/1_Bout.py")
-st.caption("Select a fight to review its statistics.")
+st.caption(components.NAV_HINT.replace("a fighter's name", "an opponent's name"))
 
 st.subheader("Trends (as of each fight)")
 options = [

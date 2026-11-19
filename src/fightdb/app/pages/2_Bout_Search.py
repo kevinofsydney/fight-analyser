@@ -70,7 +70,7 @@ if title_only:
 
 found = data.query(
     f"""SELECT *, count(*) OVER () AS total FROM (
-            SELECT bout_id, event_date, event_name, fighter_name, opp_name, won, lost, draw,
+            SELECT bout_id, event_date, event_name, fighter_id, fighter_name, opp_id, opp_name, won, lost, draw,
                    no_contest, method, method_group, end_round, division, is_title, card_order,
                    self_p_win
             FROM bout_sides WHERE {" AND ".join(where)}
@@ -124,21 +124,27 @@ st.caption(
         else "."
     )
 )
-selection = st.dataframe(
+winner_id = (
+    found["fighter_id"].where(found["won"] == 1).fillna(found["opp_id"].where(found["lost"] == 1))
+)
+favourite_id = (
+    found["fighter_id"]
+    .where(found["self_p_win"] >= 0.5, found["opp_id"])
+    .where(found["self_p_win"].notna())
+)
+components.nav_table(
     shown,
-    hide_index=True,
-    width="stretch",
-    on_select="rerun",
-    selection_mode="single-row",
     key="search_results",
+    fighter_ids={
+        "Fighter": found["fighter_id"],
+        "Opponent": found["opp_id"],
+        "Winner": winner_id,
+        "Model favourite": favourite_id,
+    },
+    bout_ids=found["bout_id"],
     column_config={"Model %": st.column_config.NumberColumn(format="percent")},
 )
-if selection.selection.rows:
-    st.session_state["bout_id"] = found.iloc[selection.selection.rows[0]]["bout_id"]
-    for key in ("bout_event_selector", "bout_selector"):
-        st.session_state.pop(key, None)
-    st.switch_page("pages/1_Bout.py")
 st.caption(
-    "Select a bout to open it on the Bout page. Model columns show the pre-fight prediction from "
+    f"{components.NAV_HINT} Model columns show the pre-fight prediction from "
     "a model trained only on earlier years (from 2012)."
 )

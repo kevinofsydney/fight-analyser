@@ -94,7 +94,8 @@ cols = st.columns(2)
 for col, fid, name in ((cols[0], a_id, a_name), (cols[1], b_id, b_name)):
     p = preds.loc[fid]
     with col:
-        st.metric(name, f"{p['p_win']:.0%} to win")
+        components.fighter_link(name, fid)
+        st.metric(name, f"{p['p_win']:.0%} to win", label_visibility="collapsed")
         st.dataframe(
             pd.DataFrame(
                 {
