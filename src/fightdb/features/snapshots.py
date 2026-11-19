@@ -474,6 +474,12 @@ def build_snapshots(
         )
     s["elo"] = s["elo"].fillna(ratings.ELO_START)
 
+    perf_hist, perf_now = ratings.compute_perf_elo(_bout_performance(con))
+    s = s.merge(perf_hist, on=["bout_id", "fighter_id"], how="left")
+    if sched.any():
+        s.loc[sched, "perf_elo"] = s.loc[sched, "fighter_id"].map(perf_now).astype(float)
+    s["perf_elo"] = s["perf_elo"].fillna(ratings.ELO_START)
+
     s = _pro_record(con, s)
     s = ratings.add_indices(s)
     s = _strength_of_schedule(s, h)
@@ -573,6 +579,56 @@ def _strength_of_schedule(s: pd.DataFrame, h: pd.DataFrame) -> pd.DataFrame:
         typical = np.where(np.isfinite(typical) & (typical > 0), typical, 1.0)
         s["sos_" + c[2:]] = own / typical
     return s
+
+
+# Fighter A's share of each scored round. Scores are taken before point deductions: a
+# deduction is a foul, not a lost round.
+_JUDGED_ROUNDS_SQL = """
+SELECT a.bout_id, a.round,
+       avg(CASE WHEN a.score + a.deduction > o.score + o.deduction THEN 1.0
+                WHEN a.score + a.deduction < o.score + o.deduction THEN 0.0
+                ELSE 0.5 END) AS judged
+FROM judge_scores a
+JOIN judge_scores o ON o.bout_id = a.bout_id AND o.round = a.round AND o.judge = a.judge
+                   AND o.fighter_id <> a.fighter_id
+JOIN bouts b ON b.bout_id = a.bout_id AND b.fighter_a_id = a.fighter_id
+WHERE a.score IS NOT NULL AND o.score IS NOT NULL
+GROUP BY ALL
+"""
+# Fighter A's stat leads in each round.
+_ROUND_LEADS_SQL = """
+SELECT r.bout_id, r.round,
+       coalesce(r.kd, 0) - coalesce(q.kd, 0) AS kd,
+       coalesce(r.sig_l, 0) - coalesce(q.sig_l, 0) AS sig_l,
+       coalesce(r.tot_l, 0) - coalesce(q.tot_l, 0) AS tot_l,
+       coalesce(r.td_l, 0) - coalesce(q.td_l, 0) AS td_l,
+       (coalesce(r.ctrl_s, 0) - coalesce(q.ctrl_s, 0)) / 60.0 AS ctrl_min,
+       coalesce(r.sub_att, 0) - coalesce(q.sub_att, 0) AS sub_att
+FROM round_stats r
+JOIN round_stats q ON q.bout_id = r.bout_id AND q.round = r.round
+                  AND q.fighter_id <> r.fighter_id
+JOIN bouts b ON b.bout_id = r.bout_id AND b.fighter_a_id = r.fighter_id
+"""
+
+
+def _bout_performance(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """Completed bouts with `perf_a`, fighter A's share of the fight (see `ratings`)."""
+    bouts = con.execute(
+        """SELECT b.bout_id, e.date, b.fighter_a_id, b.fighter_b_id, b.result_a, b.method_group,
+                  b.end_round, b.scheduled_rounds
+           FROM bouts b JOIN events e USING (event_id)
+           WHERE b.status = 'completed' AND e.date IS NOT NULL"""
+    ).df()
+    bouts["date"] = pd.to_datetime(bouts["date"])
+    leads = con.execute(_ROUND_LEADS_SQL).df()
+    leads["modelled"] = ratings.round_win_prob(leads)
+    rounds = leads[["bout_id", "round", "modelled"]].merge(
+        con.execute(_JUDGED_ROUNDS_SQL).df(), on=["bout_id", "round"], how="outer"
+    )
+    rounds["share"] = rounds["judged"].astype(float).fillna(rounds["modelled"])
+    scored = bouts["result_a"].isin(list(ratings.ELO_SCORES))
+    bouts["perf_a"] = ratings.bout_performance(bouts, rounds).where(scored)
+    return bouts
 
 
 def _completed_bouts(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:

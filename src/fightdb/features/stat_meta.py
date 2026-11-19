@@ -154,6 +154,16 @@ STATS: tuple[Stat, ...] = (
         "Results-based strength rating (1500 = debut)",
     ),
     Stat(
+        "perf_elo",
+        "Performance rating",
+        "Activity",
+        "pts",
+        True,
+        "{:.0f}",
+        "Like Elo, but scored on how much of each fight was won (rounds on the judges' cards, "
+        "or strikes, takedowns and control where there are none), not only the result",
+    ),
+    Stat(
         "southpaw",
         "Southpaw stance",
         "Fight context",

@@ -152,6 +152,90 @@ def compute_pro_ratings(fights: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=PRO_COLUMNS)
 
 
+# Performance rating: Elo where the score is how much of the fight a fighter won (0-1), not just
+# who got the result. A favourite who scrapes a split decision loses rating; a loser who won two
+# rounds before being stopped loses less. K of 96, 150 and 250 scored the same in the
+# walk-forward test, so this is the smallest of them (see NEXT_TASKS.md, 2026-11-13). It is far
+# above ELO_K because a share of a fight moves less than a win or loss does.
+PERF_K = 96.0
+# Who the judges gave a round to, from that round's stat differences (logistic, no intercept).
+# Fitted once on the 787 scored rounds before 2012, so it never sees the backtest years; it
+# picks the judges' round winner in 83% of 11,360 rounds from 2012 on. Used for rounds with no
+# scorecard (most finishes, and decisions the source has no cards for).
+ROUND_WEIGHTS = {
+    "kd": 0.89,
+    "sig_l": 0.15,
+    "tot_l": 0.03,
+    "td_l": 0.58,
+    "ctrl_min": 0.39,
+    "sub_att": 0.15,
+}
+
+
+def round_win_prob(diffs: pd.DataFrame) -> pd.Series:
+    """Chance the judges give a round to the fighter whose stat leads are in `diffs`
+    (columns of ROUND_WEIGHTS: this fighter minus the opponent)."""
+    z = pd.Series(0.0, index=diffs.index)
+    for col, weight in ROUND_WEIGHTS.items():
+        z += weight * diffs[col].astype(float)
+    return 1.0 / (1.0 + np.exp(-z))
+
+
+def bout_performance(bouts: pd.DataFrame, rounds: pd.DataFrame) -> pd.Series:
+    """Fighter A's share of each bout, 0-1, indexed like `bouts`.
+
+    `bouts` needs: bout_id, result_a, method_group, end_round, scheduled_rounds.
+    `rounds` needs: bout_id, round, share (A's share of that round: the judges' cards where we
+    have them, else `round_win_prob`).
+
+    Decisions: the mean round share. Finishes: rounds before the last one count as fought, and
+    the finisher takes the last round and every round that was never needed. Anything else
+    (disqualifications, no stats at all): the plain result.
+    """
+    res = bouts["result_a"].map(ELO_SCORES).astype(float)
+    r = rounds.merge(bouts[["bout_id", "end_round"]], on="bout_id")
+    whole = r.groupby("bout_id")["share"].agg(["sum", "size"])
+    early = r[r["round"] < r["end_round"]].groupby("bout_id")["share"].agg(["sum", "size"])
+    ids = bouts["bout_id"]
+    total, n = ids.map(whole["sum"]), ids.map(whole["size"])
+    early_total = ids.map(early["sum"]).fillna(0.0)
+    early_n = ids.map(early["size"]).fillna(0.0)
+    length = np.maximum(bouts["scheduled_rounds"].fillna(3.0), bouts["end_round"].fillna(1.0))
+    finish = (early_total + res * (length - early_n)) / length
+    perf = res.copy()
+    decision = (bouts["method_group"] == "dec") & n.notna()
+    perf[decision] = (total / n)[decision]
+    finished = bouts["method_group"].isin(ELO_FINISHES) & bouts["end_round"].notna()
+    perf[finished] = finish[finished]
+    return perf
+
+
+def compute_perf_elo(bouts: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Elo on `perf_a` (fighter A's share of the bout, from `bout_performance`).
+
+    `bouts` needs: bout_id, date, fighter_a_id, fighter_b_id, perf_a (NaN rows are skipped).
+    Returns (pre-fight ratings per (bout_id, fighter_id), final ratings by fighter). Same-day
+    bouts all use ratings from before that day.
+    """
+    ratings: dict[str, float] = {}
+    rows: list[tuple[str, str, float]] = []
+    for _, day in bouts.sort_values(["date", "bout_id"]).groupby("date", sort=True):
+        pending: dict[str, float] = {}
+        for b in day.itertuples(index=False):
+            a, c = b.fighter_a_id, b.fighter_b_id
+            ra, rc = ratings.get(a, ELO_START), ratings.get(c, ELO_START)
+            rows.append((b.bout_id, a, ra))
+            rows.append((b.bout_id, c, rc))
+            if pd.isna(b.perf_a):
+                continue
+            delta = PERF_K * (float(b.perf_a) - elo_expected(ra, rc))
+            pending[a] = pending.get(a, 0.0) + delta
+            pending[c] = pending.get(c, 0.0) - delta
+        for fid, d in pending.items():
+            ratings[fid] = ratings.get(fid, ELO_START) + d
+    return pd.DataFrame(rows, columns=["bout_id", "fighter_id", "perf_elo"]), ratings
+
+
 def _ratio(num: pd.Series, den: pd.Series) -> pd.Series:
     out = 100.0 * num / den
     return out.replace([np.inf, -np.inf], np.nan)
