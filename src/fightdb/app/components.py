@@ -139,6 +139,15 @@ def format_closing_range(low: Any, high: Any) -> str:
     return f"{decimal} decimal ({american} American)"
 
 
+def espn_id_for(fighter_id: str, source_ids: Any) -> str | None:
+    """The fighter's ESPN athlete ID from their ESPN alias IDs, or None unless exactly one fits
+    (an ambiguous ID could show someone else's photo)."""
+    ids = sorted({str(v) for v in source_ids if str(v).isascii() and str(v).isdigit()})
+    if not ids and fighter_id.startswith("espn:"):
+        ids = [fighter_id.removeprefix("espn:")]
+    return ids[0] if len(ids) == 1 else None
+
+
 def fighter_portrait(fighter_name: str, espn_id: str | None) -> str:
     """ESPN portrait with an initials placeholder when an ID or image is unavailable."""
     initials = "".join(part[0] for part in fighter_name.split()[:2]).upper() or "?"

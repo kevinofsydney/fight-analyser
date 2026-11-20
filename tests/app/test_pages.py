@@ -727,3 +727,13 @@ def test_clicking_a_fighter_name_opens_their_page(db, tmp_path, monkeypatch):
         assert at.query_params["fighter"] in (opp_id, [opp_id])
     finally:
         get_settings.cache_clear()
+
+
+def test_espn_id_needs_exactly_one_numeric_alias():
+    from fightdb.app.components import espn_id_for
+
+    assert espn_id_for("abc", ["3088812"]) == "3088812"
+    assert espn_id_for("abc", ["3088812", "3088812"]) == "3088812"
+    assert espn_id_for("abc", ["1", "2"]) is None
+    assert espn_id_for("abc", ["not-a-number"]) is None
+    assert espn_id_for("espn:4712356", []) == "4712356"

@@ -59,7 +59,15 @@ hist = data.query("SELECT * FROM bout_sides WHERE fighter_id = ? ORDER BY event_
 latest = hist.iloc[-1]
 
 nickname = bio["nickname"] if pd.notna(bio["nickname"]) else ""
-st.header(bio["name"] + (f' "{nickname}"' if nickname else ""))
+espn_aliases = data.query(
+    "SELECT source_id FROM fighter_aliases WHERE source = 'espn' AND fighter_id = ?", [fid]
+)["source_id"].dropna()
+portrait_col, summary_col = st.columns([1, 3], vertical_alignment="center")
+portrait_col.markdown(
+    components.fighter_portrait(str(bio["name"]), components.espn_id_for(fid, espn_aliases)),
+    unsafe_allow_html=True,
+)
+summary_col.header(bio["name"] + (f' "{nickname}"' if nickname else ""))
 c = st.columns(5)
 record = [bio["pro_wins"], bio["pro_losses"], bio["pro_draws"]]
 c[0].metric(
