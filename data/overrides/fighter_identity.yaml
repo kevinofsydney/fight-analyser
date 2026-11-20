@@ -14,3 +14,8 @@ espn:
   "5013686": "ec322adbabbfa6e7"
   # Mehemmedeli Osmanli (ESPN) = Mahammadali Osmanli, BW, lost at UFC FN Rosas Jr. vs. Barcelos 2026-09-26
   "5345640": "2bbdbc925f4323ac"
+
+# Names in hand-kept files (ufc_weight_misses.csv) that no spelling rule can match.
+names:
+  # Fought as Katlyn Chookagian until 2023, now Katlyn Cerminara
+  "Katlyn Chookagian": "e872e9a9a902c045"
