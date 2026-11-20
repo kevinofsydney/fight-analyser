@@ -18,7 +18,14 @@ import pandas as pd
 import streamlit as st
 
 from fightdb.analytics import hypothesis, schema
-from fightdb.app import components, data, explain, fight_projection, hypothesis_view
+from fightdb.app import (
+    bet_recs,
+    components,
+    data,
+    explain,
+    fight_projection,
+    hypothesis_view,
+)
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, STATS
 from fightdb.models import outcome, ratings
@@ -722,6 +729,87 @@ with st.expander("What goes into the model outlook?"):
     )
 
 # --- Matchup projections -------------------------------------------------------------------
+# --- Bet suggestions --------------------------------------------------------------------------
+st.subheader("Suggested bets")
+if a.status != "scheduled":
+    st.caption("Suggestions are for upcoming bouts only.")
+else:
+    unit = st.number_input(
+        "1 unit ($)", min_value=1, max_value=10_000, value=50, step=5, key="bet_unit"
+    )
+    feed_odds: dict[str, float] = {}
+    if not prices.empty:
+        mv = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
+        if mv is not None:
+            feed_odds = {
+                str(a.fighter_name): float(mv.loc[str(a.fighter_id), "best_odds"]),
+                str(b.fighter_name): float(mv.loc[str(b.fighter_id), "best_odds"]),
+            }
+    picks = bet_recs.selections(a, b)
+    grid = pd.DataFrame(
+        {
+            "Market": [x.market for x in picks],
+            "Selection": [x.selection for x in picks],
+            "Model chance": [100 * x.p for x in picks],
+            "Fair odds": [1 / x.p if x.p > 0 else math.nan for x in picks],
+            "Odds": [
+                feed_odds.get(x.selection, math.nan) if x.market == "Moneyline" else math.nan
+                for x in picks
+            ],
+        }
+    )
+    st.caption(
+        "Moneyline prices are the best current price from the bookmaker feed. The feed has no "
+        "prop markets, so type the decimal odds you're offered into the Odds column for any prop."
+    )
+    edited = st.data_editor(
+        grid,
+        hide_index=True,
+        width="stretch",
+        disabled=["Market", "Selection", "Model chance", "Fair odds"],
+        key=f"bet_odds_{bout_id}",
+        column_config={
+            "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
+            "Fair odds": st.column_config.NumberColumn(
+                format="%.2f", help="1 ÷ model chance: the price at which a bet breaks even."
+            ),
+            "Odds": st.column_config.NumberColumn(
+                "Odds (decimal)", min_value=1.01, max_value=1000.0, format="%.2f"
+            ),
+        },
+    )
+    rows = []
+    for x, odds in zip(picks, edited["Odds"], strict=True):
+        ok = True if x.method is None else bool(levels_ok.get(x.method, False))
+        units, why = bet_recs.recommend(x.p, float(odds) if pd.notna(odds) else math.nan, ok)
+        rows.append(
+            {
+                "Market": x.market,
+                "Selection": x.selection,
+                "Odds": "No odds found" if pd.isna(odds) else f"{float(odds):.2f}",
+                "Stake": f"{units:g} units (${units * unit:,.2f})" if units else "—",
+                "Why": why,
+            }
+        )
+    recs = pd.DataFrame(rows)
+    bets = recs[recs["Stake"] != "—"]
+    if bets.empty:
+        st.info("No bet: none of the priced markets clears the minimum edge.")
+    else:
+        for _, r in bets.iterrows():
+            st.success(f"**{r['Selection']}** ({r['Market']}) at {r['Odds']}: {r['Stake']}")
+    with st.expander("Every market"):
+        st.dataframe(recs, hide_index=True, width="stretch")
+    st.caption(
+        f"A bet is suggested when the model's chance × the price beats 1 by at least "
+        f"{bet_recs.MIN_EDGE:.0%}. Stakes are quarter Kelly on a "
+        f"{bet_recs.BANKROLL_UNITS:.0f}-unit bankroll, rounded down to a quarter unit and capped "
+        f"at {bet_recs.MAX_UNITS:g} units. Method and distance markets are skipped while their "
+        "calibration check fails. The round of a finish isn't modelled, so there are no round "
+        "bets. In the backtest the closing line beat the model, and edge-sized betting lost "
+        "money in 2026 so far (Model performance). Not betting advice."
+    )
+
 st.subheader("Expected fight stats")
 rounds_scheduled = int(num(a.scheduled_rounds)) if not math.isnan(num(a.scheduled_rounds)) else 3
 finish_secs = data.query(

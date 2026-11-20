@@ -1,104 +1,79 @@
 # Fight Analyser
 
-A UFC fight database and analysis tool:
+A personal UFC analysis app. It keeps every UFC fight since the 1990s in a local database, refreshes it daily, and uses it to:
 
-- **Hypothesis Lab:** test ideas like *"in men's lightweight, when one fighter is 8+ years older, how often do they win?"* and get sample sizes, 95% confidence intervals, p-values and a threshold sweep, not just a percentage.
-- **Bout comparison:** open an upcoming or past fight for side-by-side fighter cards, Elo, odds, round statistics, and point-in-time tale-of-the-tape comparisons.
-- **Explore fight history:** inspect matching bouts and interactive outcome plots for saved hypotheses, including age, reach, layoff and accumulated fight exposure.
-- **xG-style projections:** expected takedowns, strikes, control time and knockdowns per round; win and method-of-victory probabilities from a calibrated model.
-- **Daily refresh:** new results and upcoming cards re-sync once a day, and card changes (cancellations, replacements, moved bouts) are logged.
+- **Predict upcoming fights:** who wins, how (KO/TKO, submission, decision) and whether it goes the distance, and explain why.
+- **Compare against the bookmakers:** where the model and the odds disagree, and suggested bets when the gap is big enough.
+- **Test your own ideas:** "do fighters 8+ years older lose more often at lightweight?" with proper sample sizes and confidence intervals.
+- **Track how it's doing:** card-by-card results, betting results and calibration, all out of sample.
 
-**Live app:** https://fight-analyser.streamlit.app/ (password-protected). **Status and what's left to build:** [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
-
-## Quick start
-
-Needs [uv](https://docs.astral.sh/uv/) (it installs Python 3.14 for you) (`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`).
-
-```bash
-cp .env.example .env   # optional; defaults work. .env is gitignored.
-make setup             # install dependencies
-make backfill          # download ~150 MB of history + upcoming cards, build everything (~30 s)
-make app               # http://localhost:8501
-```
-
-Other commands:
-
-| Command | What it does |
-|---------|--------------|
-| `make refresh` | The daily job: new results, upcoming cards, card changes, retrain models |
-| `make hypotheses` | Run every saved hypothesis in `hypotheses/` |
-| `uv run fightdb hypothesis run hypotheses/examples/lw-older-by-8.yaml --sweep` | Run one hypothesis with a sweep |
-| `uv run fightdb model eval` | Walk-forward calibration of the win and method models, year by year |
-| `uv run fightdb db status` | Row counts and recent refresh runs |
-| `make check` | Lint, typecheck, tests |
-| `make errors` | Every logged error, grouped by cause (see [AGENTS.md](AGENTS.md#fixing-errors)) |
-
-On Windows without `make`, run the same steps through `uv run` (for `make check`: `uv run ruff check src tests scripts`, `uv run ruff format --check src tests scripts`, `uv run mypy src`, `uv run pytest`).
-
-On macOS, run Python commands through `make` or prefix them with `PYTHONPATH=src` (macOS can hide uv's editable-install file, so Python skips it).
+**Live app:** https://fight-analyser.streamlit.app/ (password-protected).
 
 ## What's in the app
 
-| Page | |
-|------|--|
-| **Home** | Upcoming events and bouts with model probabilities, age and reach gaps; select a fight to open its Bout page; card changes in the last 7 days |
-| **Bout** | Fighter portraits and a side-by-side table of current pro records, age at fight, height, reach, stance and odds (with physical advantages highlighted); pre-fight Elo (hover for the formula, or open "How Elo was calculated" for each fight) and tale of the tape; for past fights, "Prediction vs result" (the model's pre-fight favourite and most likely ending next to how the fight actually ended); past round statistics; betting line movement across daily odds fetches; "Model vs bookmakers" edge (model chance vs the bookmakers' margin-free chance, best price and expected return; closing odds for past fights); model outlook, "How the model calculated these chances" (each factor's gap, typical gap, weight and push, adding up to the win %) and its inputs (hover over index help icons for calculations); per-round projections (including takedown defence), matching hypotheses and common opponents. Reset returns to the next upcoming main event. |
-| **Bout search** | Find any completed UFC bout by fighter, opponent, event, date range, division, method or title fight; shows the model's pre-fight favourite and whether it was right; select a result to open it on the Bout page. |
-| **Matchup** | Pick any two fighters to see the win model's projection (win and method chances) from their ratings as of the last refresh, with the same factor-by-factor breakdown as the Bout page. Warns about different divisions, long layoffs and thin UFC records. |
-| **Model performance** | Out-of-sample backtest from 2012: winners picked and Brier score against the bookmakers' closing lines, accuracy by year, calibration, accuracy by confidence, how often the most likely ending happened, which inputs matter (walk-forward drop-one and alone tests), and whether the model's edge over closing odds made money. |
-| **Value picks** | Per card (upcoming or past), the fighters the model rates at least a chosen edge above the bookmakers' margin-free chance, with best price, model and market chances, expected return and, for past cards, the result and a $1-per-pick profit/loss. Includes every past card's record, a cumulative profit chart and the overall track record. Not betting advice. |
-| **My picks** | Enter your own winner and confidence for each upcoming bout (the model's numbers stay hidden unless you ask). Picks lock after the event date, and finished picks are scored against the model and the bookmakers on the same fights: winners picked, log loss and Brier score. Stored in `PICKS_PATH`, outside the database. |
-| **Hypothesis Lab** | Form builder, result with confidence interval, sweep chart, matching bouts, YAML to save. The From date is an inclusive starting date; results include later available fights. |
-| **Saved Hypotheses** | Open a saved hypothesis to explore historical outcome plots and matching fights, select a fight for its Bout page, and see upcoming matches. |
-| **Fighter** | Profile, recorded fight wear and per-fight strikes absorbed; select a historical bout to open it; trends as of each fight (hover a point for the opponent, result, method, round and Elo change). |
-| **SQL** | Read-only console (no file or network access) over the DuckDB database, including `judge_rounds` (every judge's round score next to that round's stats) |
-| **Status** | Refresh runs (including data-quality failures and Wikipedia fallback days), unmatched fighters, model calibration vs the closing betting line |
+| Page | What you get |
+|------|--------------|
+| **Home** | Upcoming cards with the model's win chances. Click a fighter for their page, anything else for the bout. |
+| **Bout** | Everything about one fight: fighter cards, odds, the model's prediction and how it got there (who wins, then how), expected fight stats (strikes, takedowns, control time), suggested bets in units, saved patterns that apply and what they mean. For past fights, how the prediction compared with what happened. |
+| **Previous cards** | How the model and the bookmakers did on each finished card, e.g. last weekend's. |
+| **Model performance** | The model's long-run record: winners picked, calibration, the last three cards, and what betting $100 a pick or sizing bets by edge would have made. |
+| **Value picks** | Fights where the model rates a fighter well above the bookmakers' price, and how those picks have done. |
+| **My picks** | Enter your own picks before a card and see how you score against the model. |
+| **Fighter** | A fighter's record, fight history, trends and recorded damage. |
+| **Bout search / Matchup** | Find any past fight, or pit any two fighters against each other. |
+| **Hypothesis Lab / Saved hypotheses** | Build and save questions about fight history. |
+| **SQL / Status** | A read-only database console, and the health of the daily refresh. |
 
-Bout cards use ESPN portrait URLs derived from unambiguous ESPN fighter IDs; when an ID or portrait is unavailable, an initials placeholder is shown. Current rankings, gyms and weigh-in weights are not currently supplied. The Fighter page includes a fight-wear profile based on recorded UFC round statistics. It counts significant strikes and knockdowns absorbed and fights with 50+, 75+, or 100+ significant strikes absorbed. Incomplete round statistics make totals unavailable; these numbers describe recorded exposure, not a medical diagnosis. The Hypothesis Lab and saved examples can explore these measures, prior KO/TKO losses, five-round wars, division moves, and stance matchups. Division direction is unknown for debutants and catchweights. Historical stance uses the currently recorded stance and may not reflect changes over time.
+## How the model works (short version)
 
-Saved hypotheses are plain YAML. Examples are in [`hypotheses/examples/`](hypotheses/examples/). Open one on **Saved Hypotheses** to see up to 100 matching fighter-sides per page, including the condition values, result and method; selecting a row opens the fight. A single bout can appear twice if both fighters meet the condition.
+1. **Who wins.** A logistic regression compares the two fighters on about 20 things: ratings (an Elo across every pro promotion, a UFC Elo and a rating built from how much of each fight they won), age, reach, experience, current streak, and style indices for striking, wrestling, submissions and durability, adjusted for the strength of past opponents.
+2. **How.** A second model splits each fighter's win chance between KO/TKO, submission and decision, from finishing rates, knockdown power, durability and similar inputs.
+3. **No peeking.** Every number for a past fight uses only fights before it, and the backtest trains on earlier years only.
 
-The **Explore historical outcomes** plot shows the observed outcome rate in ranges of height, reach, age, layoff or another feature. Select **Matching fights** or **All eligible fights**; the latter uses population filters without the hypothesis conditions. Each dot shows a roughly equal-sized group of fights, with its sample size and 95% Wilson interval on hover. Select a dot to see its fights and open a Bout page. Each fight is counted once: if both fighter-sides qualify, the side with the higher horizontal-axis value is chosen, with ties resolved consistently. This selection may differ from the fighter-side counts in the hypothesis result. The dashed line is the hypothesis baseline. An optional one-variable logistic curve is descriptive, not the prediction model or evidence of causation. Intervals do not account for repeated fighters.
+Since 2012 it picks about **64%** of winners. The bookmakers' closing favourite wins about **67%**, so the market is still the better predictor. Treat the model as a second opinion, not betting advice.
 
+## What we've tested
 
-### Your first hypothesis in 60 seconds
+Ideas get tested before they go into the model. A change ships only if it improves out-of-sample accuracy by more than chance. Full numbers are in [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
 
-1. Open **Hypothesis Lab**.
-2. Population: pick **lightweight**, sex **M**, leave the date from 2010.
-3. Condition: **Of** = "difference (this fighter − opponent)", **Stat** = Age, `>=` **8**. That reads "this fighter is at least 8 years older than the opponent".
-4. Outcome **won**, compare to **50% (coin flip)**, then run it.
-5. Read the verdict: the win rate, its 95% confidence interval, the gap from 50% in both percentage points and relative %, and the p-value. Below 30 matching bouts it warns you it's an anecdote.
-6. Look at the **sweep** chart (on by default; it varies the first condition's threshold). If the line wobbles around 50% with wide bands, "8 years" was a cherry-picked cutoff.
-7. Like it? Copy the YAML into `hypotheses/` and commit it. It then shows up on every upcoming bout it applies to.
+| Idea | Result |
+|------|--------|
+| All-promotion rating (pre-UFC record) | **Shipped**, biggest single gain, especially for debutants |
+| Rating built from share of each fight won | **Shipped**, small gain |
+| Stronger opponent adjustment | **Shipped** |
+| Momentum (last 1–3 results) | Real but small, and already explained by fighter quality. No gain. |
+| Peak age around 30–33 | Not supported. In every division, younger fighters win more often, even after allowing for experience. The model's straight age penalty is the right shape. |
+| Ring rust (time since last fight) | No usable signal. Fighters out 18–24 months under-performed, but not those out longer, and adding layoff to the model didn't help. |
+| Gradient boosting, recency weighting, many extra stats | No gain, or broke calibration |
+| Fight wear (damage absorbed) | Shown on fighter pages; kept out of the model by owner decision |
 
-Historical fight-based features and model inputs use only bouts before the fight being analysed. Some biography fields, including stance, come from the current source record and may not reflect how they were recorded historically. The Bout card separately labels the **current** pro record, including on historical bouts. Each hypothesis you run in a session counts toward a multiple-comparisons reminder.
+## Run it yourself
 
-## Fight odds
+You need [uv](https://docs.astral.sh/uv/), which installs Python 3.14 for you.
 
-The Bout page shows historical closing price ranges where fight-canon-db has them. To show upcoming Australian bookmaker prices, obtain an API key from [The Odds API](https://the-odds-api.com/) and set `ODDS_API_KEY` in your local `.env` or as a GitHub Actions repository secret. The daily refresh requests Australian head-to-head odds at most once per UTC day, matches both fighters and event date, and records when the quotes were fetched. In the app, **Refresh odds via GitHub** opens the Daily refresh workflow; select **Run workflow** to request an update, subject to the same daily limit. GitHub builds and publishes the database and the hosted app can take up to its cache lifetime to show new data. Without a key, upcoming odds are unavailable and the rest of the app continues to work. The last successfully retrieved quotes are retained if an odds request fails, with their timestamps; successful responses replace the previous snapshot. Prices can change between refreshes. Historical closing ranges use fight-canon-db data and need no key. Odds are for comparison, not betting advice.
+```bash
+cp .env.example .env   # optional; the defaults work
+make setup             # install dependencies
+make backfill          # download the fight history and build everything
+make app               # open http://localhost:8501
+```
+
+Other useful commands: `make refresh` (the daily update), `make check` (lint, types, tests), `make errors` (logged errors). On Windows without `make`, run the same things through `uv run`; see [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
+
+Upcoming bookmaker odds need a free key from [The Odds API](https://the-odds-api.com/) in `ODDS_API_KEY`. Everything else works without it.
 
 ## Hosting
 
-Runs on a homelab (Docker Compose with a cron refresher) or for free (GitHub Actions builds the database daily; Streamlit Community Cloud or Hugging Face serves the app). GitHub starts scheduled workflows late: the 11:00 UTC refresh has been starting between 16:30 and 18:30 UTC, so on the free path cards can be up to about 8 hours older than the cron suggests. The homelab cron runs on time. Step-by-step instructions are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). No secrets are needed for core data; optional ones (`APP_PASSWORD`, `DISCORD_WEBHOOK_URL`, `ODDS_API_KEY`) go in `.env` or the host's secret store.
+GitHub Actions rebuilds the database every day and Streamlit Community Cloud serves the app. It can also run on a home server with Docker. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Docs
-- [PRD](docs/PRD.md): what we're building and why
-- [Data sources](docs/DATA_SOURCES.md): where the data comes from and how it refreshes
-- [Analysis ideas](docs/ANALYSIS_IDEAS.md): xG-style metrics, matchup models, question catalogue
-- [Build plan](docs/BUILD_PLAN.md): tasks for coding agents, and what is built so far
-- [Deployment](docs/DEPLOYMENT.md): homelab and free hosting options
-- [Decisions](docs/DECISIONS.md): open choices for the owner
-- [AGENTS.md](AGENTS.md): rules for anyone (human or AI) contributing
+## More detail
 
-## License
-Code: [MIT](LICENSE). The license covers this repository's code, not the upstream data (see below).
+- [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md): where things stand, every experiment and what's next
+- [docs/PRD.md](docs/PRD.md): what we're building and why
+- [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md): where the data comes from
+- [docs/ANALYSIS_IDEAS.md](docs/ANALYSIS_IDEAS.md): the stats and question catalogue
+- [AGENTS.md](AGENTS.md): rules for contributors, human or AI
 
-## Data credits
-- [fight-canon-db](https://github.com/Jadevit/fight-canon-db) (MIT): fight history, round stats, odds
-- [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) (GPL-3.0 code; we use its data files): fallback history
-- ESPN's public scoreboard feed: upcoming cards and fighter portrait IDs
-- [The Odds API](https://the-odds-api.com/): optional upcoming Australian bookmaker odds
-- [Wikipedia](https://en.wikipedia.org/wiki/List_of_UFC_events) (CC BY-SA), via the MediaWiki API: upcoming cards when ESPN is down
-- Judges' scorecards via fight-canon-db (from mmadecisions.com and ufc.com)
+## Data and licence
 
-Both datasets originate from [UFC Stats](http://ufcstats.com). Used for personal, non-commercial analysis. Model probabilities are not betting advice.
+Fight history, round stats and closing odds come from [fight-canon-db](https://github.com/Jadevit/fight-canon-db), with [Greco1899/scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) as a fallback (both originate from UFC Stats). Upcoming cards come from ESPN's public feed and Wikipedia, and upcoming odds from The Odds API. Code is [MIT](LICENSE); the data belongs to its sources. For personal, non-commercial analysis. Model numbers are not betting advice.

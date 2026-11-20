@@ -297,6 +297,22 @@ def test_bout_shows_upcoming_bookmaker_prices(db, tmp_path, monkeypatch):
         assert edge["Bookmakers' chance"].iloc[0] == pytest.approx(100 / 1.75 / overround)
         assert edge["Best price"].tolist() == [1.75, 2.15]
         assert any(m.value == "**Betting line movement**" for m in at.markdown)
+
+        # Suggested bets: moneyline odds come from the feed; a prop price typed by hand is used.
+        markets = next(df.value for df in at.dataframe if "Why" in df.value.columns)
+        assert set(markets.loc[markets["Market"] == "Moneyline", "Odds"]) == {"1.75", "2.15"}
+        assert (markets.loc[markets["Market"] != "Moneyline", "Odds"] == "No odds found").all()
+        row = int(markets.index[markets["Market"] == "Method of victory"][0])
+        at.session_state[f"bet_odds_{bout_id}"] = {
+            "edited_rows": {row: {"Odds": 1000.0}},
+            "added_rows": [],
+            "deleted_rows": [],
+        }
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        markets = next(df.value for df in at.dataframe if "Why" in df.value.columns)
+        assert markets.loc[row, "Odds"] == "1000.00"
+        assert markets.loc[row, "Why"] != "No odds found. Enter a price to check it."
         assert sum("fetched_at" in c.proto.spec for c in at.get("vega_lite_chart")) == 1
     finally:
         get_settings.cache_clear()
