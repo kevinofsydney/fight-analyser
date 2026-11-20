@@ -104,7 +104,16 @@ def compute_elo(bouts: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float]]:
 PRO_K = 20.0
 PRO_K_EARLY = 40.0
 PRO_K_FADE_FIGHTS = 10.0
-PRO_COLUMNS = ["fighter_id", "date", "pro_elo", "pro_fights", "pro_wins"]
+PRO_COLUMNS = [
+    "fighter_id",
+    "date",
+    "pro_elo",
+    "pro_fights",
+    "pro_wins",
+    "pro_losses",
+    "pro_wins_finish",
+    "pro_losses_finish",
+]
 
 
 def compute_pro_ratings(fights: pd.DataFrame) -> pd.DataFrame:
@@ -117,18 +126,19 @@ def compute_pro_ratings(fights: pd.DataFrame) -> pd.DataFrame:
     """
     f = fights.sort_values(["date", "fighter_a_id", "fighter_b_id"])
     elo: dict[str, float] = {}
-    n: dict[str, int] = {}
-    wins: dict[str, int] = {}
-    rows: list[tuple[str, object, float, int, int]] = []
+    # fights, wins, losses, wins by finish, losses by finish
+    record: dict[str, list[int]] = {}
+    rows: list[tuple[object, ...]] = []
     pending: dict[str, list[float]] = {}
     current: object = None
 
     def flush() -> None:
-        for fid, (delta, fought, won) in pending.items():
+        for fid, (delta, *counts) in pending.items():
             elo[fid] = elo.get(fid, ELO_START) + delta
-            n[fid] = n.get(fid, 0) + int(fought)
-            wins[fid] = wins.get(fid, 0) + int(won)
-            rows.append((fid, current, elo[fid], n[fid], wins[fid]))
+            r = record.setdefault(fid, [0, 0, 0, 0, 0])
+            for i, c in enumerate(counts):
+                r[i] += int(c)
+            rows.append((fid, current, elo[fid], *r))
         pending.clear()
 
     for day, a, b, result, finish in zip(
@@ -142,12 +152,19 @@ def compute_pro_ratings(fights: pd.DataFrame) -> pd.DataFrame:
             current = day
         surprise = score - elo_expected(elo.get(a, ELO_START), elo.get(b, ELO_START))
         mult = FINISH_MULT if finish else 1.0
-        for fid, sign, won in ((a, 1.0, score == 1.0), (b, -1.0, score == 0.0)):
-            k = PRO_K + PRO_K_EARLY * float(np.exp(-n.get(fid, 0) / PRO_K_FADE_FIGHTS))
-            p = pending.setdefault(fid, [0.0, 0.0, 0.0])
+        for fid, sign, won, lost in (
+            (a, 1.0, score == 1.0, score == 0.0),
+            (b, -1.0, score == 0.0, score == 1.0),
+        ):
+            fought = record.get(fid, [0])[0]
+            k = PRO_K + PRO_K_EARLY * float(np.exp(-fought / PRO_K_FADE_FIGHTS))
+            p = pending.setdefault(fid, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             p[0] += sign * k * mult * surprise
             p[1] += 1
             p[2] += won
+            p[3] += lost
+            p[4] += won and bool(finish)
+            p[5] += lost and bool(finish)
     flush()
     return pd.DataFrame(rows, columns=PRO_COLUMNS)
 

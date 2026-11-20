@@ -1,93 +1,31 @@
-"""Home: upcoming UFC cards and recent card changes."""
+"""App entry point: the page list and sidebar names. Each page is its own script in pages/."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # run from a checkout without install
 
-from fightdb.app.freshness import reload_changed_modules
-
-reload_changed_modules()
-
 import streamlit as st
 
-from fightdb.app import components, data
+PAGES = [
+    ("pages/0_Fight_Cards.py", "Fight Cards", "🥊"),
+    ("pages/12_Previous_Cards.py", "Previous Cards", "🗓️"),
+    ("pages/1_Bout.py", "Bout", "🥊"),
+    ("pages/2_Bout_Search.py", "Bout Search", "🔎"),
+    ("pages/3_Matchup.py", "Matchup", "⚖️"),
+    ("pages/8_Fighter.py", "Fighter", "👤"),
+    ("pages/4_Model_Performance.py", "Model Performance", "📈"),
+    ("pages/5_Value_Picks.py", "Value Picks", "🎯"),
+    ("pages/11_My_Picks.py", "My Picks", "✍️"),
+    ("pages/6_Hypothesis_Lab.py", "Hypothesis Lab", "🧪"),
+    ("pages/7_Saved_Hypotheses.py", "Saved Hypotheses", "📚"),
+    ("pages/9_SQL.py", "SQL", "🧮"),
+    ("pages/10_Status.py", "Status", "🩺"),
+]
 
-components.page("Upcoming cards")
-st.title("Upcoming UFC cards")
-
-events = data.upcoming_events()
-changes = data.recent_changes(7)
-
-left, right = st.columns([3, 1])
-with right:
-    st.subheader("Card changes (7 days)")
-    if changes.empty:
-        st.caption("No changes detected in the last week.")
-    else:
-        for row in changes.itertuples():
-            st.markdown(
-                f"**{row.change_type.replace('_', ' ')}** · {row.summary}  \n<small>{components.fmt_date(row.detected_at, with_time=True)} UTC</small>",
-                unsafe_allow_html=True,
-            )
-
-with left:
-    if events.empty:
-        st.info("No upcoming events found. The ESPN feed may be empty or the last refresh failed.")
-    for ev in events.itertuples():
-        with st.expander(
-            f"**{ev.name}** · {components.fmt_date(ev.date)} · {ev.bouts} bouts",
-            expanded=ev.Index == 0,
-        ):
-            if ev.location:
-                st.caption(ev.location)
-            card = data.event_card(ev.event_id)
-            if card.empty:
-                st.caption("No bouts listed yet.")
-                continue
-            card = card.reset_index(drop=True)
-            show = card.assign(
-                model=card["self_p_win"].map(lambda p: "—" if p != p else f"{p:.0%} / {1 - p:.0%}"),
-                age_gap=card["diff_age_years"].map(lambda d: "—" if d != d else f"{d:+.1f} y"),
-                reach_gap=card["diff_reach_cm"].map(components.fmt_diff_cm),
-                exp=card["self_ufc_fights"].astype(int).astype(str)
-                + " / "
-                + card["opp_ufc_fights"].astype(int).astype(str),
-            )
-            components.nav_table(
-                show[
-                    [
-                        "fighter_name",
-                        "opp_name",
-                        "weight_class",
-                        "scheduled_rounds",
-                        "model",
-                        "age_gap",
-                        "reach_gap",
-                        "exp",
-                    ]
-                ],
-                key=f"card_{ev.event_id}",
-                fighter_ids={"fighter_name": card["fighter_id"], "opp_name": card["opp_id"]},
-                bout_ids=card["bout_id"],
-                column_config={
-                    "fighter_name": "Fighter (main event first)",
-                    "opp_name": "Opponent",
-                    "weight_class": "Weight class",
-                    "scheduled_rounds": "Rds",
-                    "model": st.column_config.TextColumn(
-                        "Model win %", help="Calibrated model, fighter / opponent"
-                    ),
-                    "age_gap": "Age gap",
-                    "reach_gap": "Reach gap",
-                    "exp": st.column_config.TextColumn(
-                        "UFC fights", help="Prior UFC bouts, fighter / opponent"
-                    ),
-                },
-            )
-            st.caption(components.NAV_HINT)
-
-st.caption(
-    "Data: fight-canon-db and Greco1899 (from UFC Stats), upcoming cards from ESPN. "
-    "Model probabilities are for analysis, not betting advice."
-)
+st.navigation(
+    [
+        st.Page(path, title=title, icon=icon, default=i == 0)
+        for i, (path, title, icon) in enumerate(PAGES)
+    ]
+).run()

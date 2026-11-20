@@ -48,6 +48,8 @@ def test_pro_rating_counts_record_and_rewards_the_winner():
     )
     last = state.loc[("a", date(2019, 3, 1))]
     assert (last["pro_fights"], last["pro_wins"]) == (3, 1)
+    assert (last["pro_losses"], last["pro_wins_finish"], last["pro_losses_finish"]) == (1, 0, 1)
+    assert state.loc[("z", date(2019, 3, 1)), "pro_wins_finish"] == 1
     assert last["pro_elo"] < state.loc[("a", date(2019, 2, 1)), "pro_elo"]
 
 
@@ -91,6 +93,10 @@ def test_snapshot_pro_record_is_pre_fight_and_unknown_without_history(con):
     debut = s.loc[("b1", "a")]
     assert debut["pro_fights"] == 2  # its own bout on the same day is not counted
     assert debut["pro_win_pct"] == pytest.approx((1 + 5) / (2 + 10))
+    # One win, by finish; one loss, not a finish (r2 is a plain loss).
+    k, prior = snapshots.PRO_FINISH_PRIOR_FIGHTS, snapshots.PRO_FINISH_PRIOR
+    assert debut["pro_win_finish_pct"] == pytest.approx((1 + k * prior) / (1 + k))
+    assert debut["pro_loss_finish_pct"] == pytest.approx((0 + k * prior) / (1 + k))
     assert debut["pro_elo"] != ratings.ELO_START
     assert s.loc[("b3", "a"), "pro_fights"] == 3
     # No recorded pro fight before the bout: unknown, never "zero fights at 1500".

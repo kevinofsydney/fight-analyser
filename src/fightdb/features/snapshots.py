@@ -489,6 +489,12 @@ def build_snapshots(
 
 # Pro win % is pulled towards 50% by this many imaginary fights, so 3-0 doesn't read as 100%.
 PRO_WIN_PCT_PRIOR_FIGHTS = 10.0
+# How a fighter's pro wins and losses end. Pulled towards the share of pro fights before 2012 that
+# ended in a finish (78%, so no backtest year informs it) by this many imaginary fights. These
+# fixed the method model's blind spot for fighters with long records outside the UFC, e.g. a
+# 19-9 finisher with no decisions anywhere (see NEXT_TASKS.md, 2026-11-20).
+PRO_FINISH_PRIOR = 0.78
+PRO_FINISH_PRIOR_FIGHTS = 5.0
 
 
 def _pro_record(con: duckdb.DuckDBPyConnection, s: pd.DataFrame) -> pd.DataFrame:
@@ -504,13 +510,16 @@ def _pro_record(con: duckdb.DuckDBPyConnection, s: pd.DataFrame) -> pd.DataFrame
     state = state[state["fighter_id"].isin(s["fighter_id"].unique())].copy()
     state["fighter_id"] = state["fighter_id"].astype(s["fighter_id"].dtype)
     state["date"] = pd.to_datetime(state["date"]).astype(s["date"].dtype)
-    cols = ["pro_elo", "pro_fights", "pro_wins"]
+    cols = ratings.PRO_COLUMNS[2:]
     state[cols] = state[cols].astype(float)
     got = _asof(s[["bout_id", "fighter_id", "date"]], state, by="fighter_id")
     s = s.merge(got[["bout_id", "fighter_id", *cols]], on=["bout_id", "fighter_id"], how="left")
     half = PRO_WIN_PCT_PRIOR_FIGHTS / 2
     s["pro_win_pct"] = (s["pro_wins"] + half) / (s["pro_fights"] + PRO_WIN_PCT_PRIOR_FIGHTS)
-    return s.drop(columns=["pro_wins"])
+    k, prior = PRO_FINISH_PRIOR_FIGHTS, PRO_FINISH_PRIOR
+    s["pro_win_finish_pct"] = (s["pro_wins_finish"] + k * prior) / (s["pro_wins"] + k)
+    s["pro_loss_finish_pct"] = (s["pro_losses_finish"] + k * prior) / (s["pro_losses"] + k)
+    return s.drop(columns=["pro_wins", "pro_losses", "pro_wins_finish", "pro_losses_finish"])
 
 
 # Minutes of neutral (factor 1.0) schedule every fighter starts with, so one or two fights
