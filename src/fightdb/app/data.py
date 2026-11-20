@@ -7,6 +7,7 @@ file underneath a running app. On free hosts, the database is downloaded from DA
 from __future__ import annotations
 
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +112,44 @@ def event_card(event_id: str) -> pd.DataFrame:
 
 def bout_sides(bout_id: str) -> pd.DataFrame:
     return query("SELECT * FROM bout_sides WHERE bout_id = ? ORDER BY is_a DESC", [bout_id])
+
+
+WEIGHT_MISS_COLUMNS = [
+    "card_date",
+    "card_name",
+    "fighter_id",
+    "bout_id",
+    "record_type",
+    "pounds_over",
+    "notes",
+    "source_url",
+]
+
+
+def weight_misses(fighter_ids: list[str]) -> pd.DataFrame:
+    """Recorded weigh-in misses (from 2018) for these fighters, oldest first. Empty on a database
+    built before the table existed."""
+    exists = not query(
+        "SELECT table_name FROM information_schema.tables WHERE table_name = ?", ["weight_misses"]
+    ).empty
+    if not exists or not fighter_ids:
+        return pd.DataFrame(columns=WEIGHT_MISS_COLUMNS)
+    marks = ", ".join("?" for _ in fighter_ids)
+    return query(
+        f"SELECT {', '.join(WEIGHT_MISS_COLUMNS)} FROM weight_misses "
+        f"WHERE fighter_id IN ({marks}) ORDER BY card_date, card_name",
+        list(fighter_ids),
+    )
+
+
+def weight_misses_reviewed_through() -> date | None:
+    """Latest card in the weigh-in miss list (a proxy for how far it has been reviewed)."""
+    if query(
+        "SELECT table_name FROM information_schema.tables WHERE table_name = ?", ["weight_misses"]
+    ).empty:
+        return None
+    d = query("SELECT max(card_date) AS d FROM weight_misses")["d"].iloc[0]
+    return None if pd.isna(d) else pd.Timestamp(d).date()
 
 
 def recent_changes(days: int = 7) -> pd.DataFrame:
