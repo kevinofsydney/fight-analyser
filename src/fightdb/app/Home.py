@@ -15,6 +15,7 @@ PAGES = [
     ("pages/3_Matchup.py", "Matchup", "⚖️"),
     ("pages/8_Fighter.py", "Fighter", "👤"),
     ("pages/4_Model_Performance.py", "Model Performance", "📈"),
+    ("pages/13_Experiments.py", "Experiments", "🔬"),
     ("pages/5_Value_Picks.py", "Value Picks", "🎯"),
     ("pages/11_My_Picks.py", "My Picks", "✍️"),
     ("pages/6_Hypothesis_Lab.py", "Hypothesis Lab", "🧪"),

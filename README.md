@@ -17,6 +17,7 @@ A personal UFC analysis app. It keeps every UFC fight since the 1990s in a local
 | **Bout** | Everything about one fight: fighter cards, odds, the model's prediction and how it got there (who wins, then how), expected fight stats (strikes, takedowns, control time), suggested bets in units, saved patterns that apply and what they mean. For past fights, how the prediction compared with what happened. |
 | **Previous cards** | How the model and the bookmakers did on each finished card, e.g. last weekend's. |
 | **Model performance** | The model's long-run record: winners picked, calibration, the last three cards, and what betting $100 a pick or sizing bets by edge would have made. |
+| **Experiments** | Every idea tested on the models, including the ones that didn't help, and why. |
 | **Value picks** | Fights where the model rates a fighter well above the bookmakers' price, and how those picks have done. |
 | **My picks** | Enter your own picks before a card and see how you score against the model. |
 | **Fighter** | A fighter's record, fight history, trends and recorded damage. |
@@ -34,7 +35,7 @@ Since 2012 it picks about **64%** of winners. The bookmakers' closing favourite 
 
 ## What we've tested
 
-Ideas get tested before they go into the model. A change ships only if it improves out-of-sample accuracy by more than chance. Full numbers are in [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
+Ideas get tested before they go into the model. A change ships only if it improves out-of-sample accuracy by more than chance. The **Experiments** page in the app explains each one; full numbers are in [docs/NEXT_TASKS.md](docs/NEXT_TASKS.md).
 
 | Idea | Result |
 |------|--------|
