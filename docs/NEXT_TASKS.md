@@ -278,3 +278,7 @@ Prompted by Terrance McKinney (19-9 pro, no decision in any fight) being given 2
 Confirmed by a full rebuild of the 2026-11-19 release: 1.5985 → 1.5860, all gates pass, win model unchanged (0.6367). McKinney vs Miller now reads McKinney KO/TKO 37%, submission 9%, decision 17%, and the fight goes the distance 22% (was 32%). The gain is about 3.5 times the performance rating's.
 
 **App (M14):** the first page is **Fight Cards** (the entry point `Home.py` now lists the pages with `st.navigation`, so the hosted app's main file is unchanged; Previous Cards moved up to second). Card changes are a collapsed expander. The "UFC fights" column is now **Bet opportunity**: 1–5 stars for the better moneyline side's expected return at the best current price, split at the backtest's fifths (5%, 15%, 27%, 50%). Returns by fifth over 2015+ ranged from −1% to +14% with no steady rise, so the stars rank disagreement with the market, not proven value; the help text says so.
+
+## Experiments page on 2026-11-20 (M16)
+
+The app's **Experiments** page lists every model experiment in plain language (idea, what we found, numbers, verdict), with tabs for "Didn't help" and "Shipped". The entries live in `src/fightdb/app/experiments.py`: **add one there whenever an experiment finishes**, alongside the full write-up here.

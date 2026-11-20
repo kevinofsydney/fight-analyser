@@ -737,3 +737,12 @@ def test_espn_id_needs_exactly_one_numeric_alias():
     assert espn_id_for("abc", ["1", "2"]) is None
     assert espn_id_for("abc", ["not-a-number"]) is None
     assert espn_id_for("espn:4712356", []) == "4712356"
+
+
+def test_experiment_log_is_complete():
+    from fightdb.app.experiments import EXPERIMENTS
+
+    verdicts = {e.verdict for e in EXPERIMENTS}
+    assert {"shipped", "no gain"} <= verdicts
+    for e in EXPERIMENTS:
+        assert e.title and e.idea and e.found and e.numbers
