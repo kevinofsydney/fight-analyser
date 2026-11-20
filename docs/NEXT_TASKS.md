@@ -63,7 +63,7 @@ These questions can't be asked in the Hypothesis Lab yet because the feature col
 | ID | Task | |
 |----|------|--|
 | M1 | **Decision-label watch.** In the method model, big favourites winning on points are under-predicted (0.5–0.6 bin: 53% predicted, 64% observed, n=47). Once that bin has 100+ fighters in the last three test years and is still off by more than 5 pp, the gate hides only the decision label. Try adding `self_p_win` as a feature to the method model and compare walk-forward log loss; keep it only if log loss improves and every method stays calibrated. | 🔴 |
-| M7 | **KO label gate.** Since the all-promotion rating, the 0.3–0.4 "wins by KO" bin of 2024–2026 predicts 34% and observes 41% (n=197), over the 5-point limit, so the KO label is hidden. Over all test years the bin is fine (34% vs 36%), and 2026 has an unusually high KO rate (20% vs 16–17%). Adding the win model's output, weight class, sex or scheduled rounds to the method model did not close it. | 🔴 |
+| M7 | **Done 2026-11-20 (M14).** The KO label gate failed because the method model only saw UFC finish rates. Adding all-promotion finish shares fixed it: every method gate now passes. | ✅ |
 | M2 | **Market comparison for upcoming bouts.** The Odds API feed and bookmaker prices are implemented. A calculated model-versus-market implied-probability comparison is not implemented. | 🔴 |
 | M3 | **Multi-variable hypotheses** (PRD §10): logistic regression with covariates, so "older by 8+ years" can be tested controlling for Elo gap. Add an optional `controls:` list to the hypothesis YAML schema (a contract change in `analytics/schema.py`); report the adjusted odds ratio and CI. | 🔴 |
 | M4 | **Insight finder** (PRD §10): scan every numeric feature × outcome, report effects with Benjamini–Hochberg FDR correction. CLI first (`fightdb hypothesis scan`), page later. | 🔴 |
@@ -261,3 +261,20 @@ The 18–24-month dip is the only gap outside its interval, on 249 fighters, and
 | Current + layoff over 1 year × years past 33 | −0.0003 [−0.0011, +0.0006] |
 
 Age matters a lot (removing it costs 0.011), but the straight-line gap is already the best shape. Nothing shipped. Brian Ortega (UFC Fight Night, 2026-11-21) is coming off 455 days out at 35.7; the model counts his age, not the layoff.
+
+## Method model: all-promotion finish shares on 2026-11-20 (M14)
+
+Prompted by Terrance McKinney (19-9 pro, no decision in any fight) being given 28% to win by decision against Jim Miller at UFC 334. Two checks:
+
+- **Reality:** fighters who had never gone the distance in 5+ UFC fights still won by decision 26% of the time (139 fighter-sides, 2012+), so a decision chance isn't absurd. But the method model only saw UFC rates, and McKinney's record outside the UFC (13 more fights, all finishes) was invisible to it.
+- **Fix:** per side, the share of pro wins that were finishes and the share of pro losses that were finishes, across every promotion, as of the day before the bout, shrunk towards 78% (the pre-2012 finish share) by 5 fights and given to the method model as log-odds (`self/opp_pro_win_finish_pct`, `self/opp_pro_loss_finish_pct` in `stat_meta.py`; `scripts/method_finish_experiment.py`).
+
+| Method model | Log loss 2012+ | Log loss 2020+ | KO gate | Sub gate | Dec gate |
+|---|---|---|---|---|---|
+| Before | 1.5985 | 1.5806 | fail | pass | pass |
+| + shares as plain rates | 1.5863 | 1.5691 | fail | pass | pass |
+| **Shipped:** + shares as log-odds | **1.5858** | **1.5686** | **pass** | pass | pass |
+
+Confirmed by a full rebuild of the 2026-11-19 release: 1.5985 → 1.5860, all gates pass, win model unchanged (0.6367). McKinney vs Miller now reads McKinney KO/TKO 37%, submission 9%, decision 17%, and the fight goes the distance 22% (was 32%). The gain is about 3.5 times the performance rating's.
+
+**App (M14):** the first page is **Fight Cards** (the entry point `Home.py` now lists the pages with `st.navigation`, so the hosted app's main file is unchanged; Previous Cards moved up to second). Card changes are a collapsed expander. The "UFC fights" column is now **Bet opportunity**: 1–5 stars for the better moneyline side's expected return at the best current price, split at the backtest's fifths (5%, 15%, 27%, 50%). Returns by fifth over 2015+ ranged from −1% to +14% with no steady rise, so the stars rank disagreement with the market, not proven value; the help text says so.

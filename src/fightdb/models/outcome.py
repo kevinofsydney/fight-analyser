@@ -80,6 +80,13 @@ LEVEL_FEATURES = [
     "opp_age_years",
     "self_distance_rate",
     "opp_distance_rate",
+    # How each side wins and loses across every promotion, as log-odds. The UFC-only rates know
+    # little about a fighter with a long regional record (method log loss 1.5985 -> 1.5858, and
+    # the KO/TKO gate passes again; see NEXT_TASKS.md, 2026-11-20).
+    "self_pro_win_finish_lo",
+    "opp_pro_win_finish_lo",
+    "self_pro_loss_finish_lo",
+    "opp_pro_loss_finish_lo",
 ]
 METHOD_CLASSES = ["win_ko", "win_sub", "win_dec", "loss_ko", "loss_sub", "loss_dec"]
 _MIRROR = {
@@ -101,6 +108,11 @@ def add_matchup_diffs(s: pd.DataFrame) -> pd.DataFrame:
     for c in ("x_sig_r", "x_td_r", "x_kd_r", "x_ctrl_s_r"):
         if f"self_{c}" in s.columns:
             s[f"diff_{c}"] = s[f"self_{c}"] - s[f"opp_{c}"]
+    for side in ("self", "opp"):
+        for c in ("win_finish", "loss_finish"):
+            if f"{side}_pro_{c}_pct" in s.columns:
+                v = s[f"{side}_pro_{c}_pct"].astype(float).clip(0.02, 0.98)
+                s[f"{side}_pro_{c}_lo"] = np.log(v / (1 - v))
     return s
 
 

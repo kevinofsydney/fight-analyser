@@ -63,6 +63,26 @@ STATS: tuple[Stat, ...] = (
         "Pro wins / pro fights in any promotion, pulled towards 50% for short records",
     ),
     Stat(
+        "pro_win_finish_pct",
+        "Pro wins by finish %",
+        "Record",
+        "%",
+        None,
+        "{:.0%}",
+        "Share of pro wins in any promotion by KO/TKO or submission, pulled towards 78% for "
+        "short records",
+    ),
+    Stat(
+        "pro_loss_finish_pct",
+        "Pro losses by finish %",
+        "Record",
+        "%",
+        False,
+        "{:.0%}",
+        "Share of pro losses in any promotion by being finished, pulled towards 78% for short "
+        "records",
+    ),
+    Stat(
         "pro_elo",
         "All-promotion Elo",
         "Record",

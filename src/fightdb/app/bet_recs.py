@@ -84,3 +84,29 @@ def recommend(p: float, odds: float, calibrated: bool = True) -> tuple[float, st
     if units <= 0:
         return 0.0, f"No bet: edge {ev:+.0%} is too small to stake."
     return units, f"Bet: expected return {ev:+.0%} per $1."
+
+
+# Expected return per $1 on the better side at which a bout earns each extra star: the fifths of
+# that number over 2015+ bouts at the best closing price, so each star is about 20% of bouts.
+# Returns by fifth were -1% to +14% with no steady rise, so more stars means the model disagrees
+# with the market more, not that the bet has done better.
+OPPORTUNITY_STEPS = (0.05, 0.15, 0.27, 0.50)
+
+
+def opportunity(p: float, best_a: float, best_b: float) -> tuple[int, int, float]:
+    """(stars 1-5, side 0 for A / 1 for B, expected return) for the better moneyline bet by the
+    model's numbers; stars 0 when there is no price."""
+    if any(math.isnan(x) for x in (p, best_a, best_b)):
+        return 0, 0, math.nan
+    ev_a, ev_b = p * best_a - 1, (1 - p) * best_b - 1
+    side, ev = (0, ev_a) if ev_a >= ev_b else (1, ev_b)
+    stars = 1 + sum(ev >= step for step in OPPORTUNITY_STEPS)
+    return stars, side, ev
+
+
+def opportunity_label(p: float, best_a: float, best_b: float, name_a: str, name_b: str) -> str:
+    """e.g. "★★★☆☆  Navajo Stirling +20%", or "No odds yet"."""
+    stars, side, ev = opportunity(p, best_a, best_b)
+    if not stars:
+        return "No odds yet"
+    return f"{'★' * stars}{'☆' * (5 - stars)}  {name_a if side == 0 else name_b} {ev:+.0%}"

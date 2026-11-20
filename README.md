@@ -13,7 +13,7 @@ A personal UFC analysis app. It keeps every UFC fight since the 1990s in a local
 
 | Page | What you get |
 |------|--------------|
-| **Home** | Upcoming cards with the model's win chances. Click a fighter for their page, anything else for the bout. |
+| **Fight Cards** | Upcoming cards with the model's win chances and a 1–5 star bet-opportunity rating. Click a fighter for their page, anything else for the bout. |
 | **Bout** | Everything about one fight: fighter cards, odds, the model's prediction and how it got there (who wins, then how), expected fight stats (strikes, takedowns, control time), suggested bets in units, saved patterns that apply and what they mean. For past fights, how the prediction compared with what happened. |
 | **Previous cards** | How the model and the bookmakers did on each finished card, e.g. last weekend's. |
 | **Model performance** | The model's long-run record: winners picked, calibration, the last three cards, and what betting $100 a pick or sizing bets by edge would have made. |
@@ -27,7 +27,7 @@ A personal UFC analysis app. It keeps every UFC fight since the 1990s in a local
 ## How the model works (short version)
 
 1. **Who wins.** A logistic regression compares the two fighters on about 20 things: ratings (an Elo across every pro promotion, a UFC Elo and a rating built from how much of each fight they won), age, reach, experience, current streak, and style indices for striking, wrestling, submissions and durability, adjusted for the strength of past opponents.
-2. **How.** A second model splits each fighter's win chance between KO/TKO, submission and decision, from finishing rates, knockdown power, durability and similar inputs.
+2. **How.** A second model splits each fighter's win chance between KO/TKO, submission and decision, from how they've won and lost across every promotion, knockdown power, durability and similar inputs.
 3. **No peeking.** Every number for a past fight uses only fights before it, and the backtest trains on earlier years only.
 
 Since 2012 it picks about **64%** of winners. The bookmakers' closing favourite wins about **67%**, so the market is still the better predictor. Treat the model as a second opinion, not betting advice.
@@ -41,6 +41,7 @@ Ideas get tested before they go into the model. A change ships only if it improv
 | All-promotion rating (pre-UFC record) | **Shipped**, biggest single gain, especially for debutants |
 | Rating built from share of each fight won | **Shipped**, small gain |
 | Stronger opponent adjustment | **Shipped** |
+| How a fighter wins and loses across every promotion (method model) | **Shipped**: the method model's biggest gain, and fixed its KO/TKO calibration |
 | Momentum (last 1–3 results) | Real but small, and already explained by fighter quality. No gain. |
 | Peak age around 30–33 | Not supported. In every division, younger fighters win more often, even after allowing for experience. The model's straight age penalty is the right shape. |
 | Ring rust (time since last fight) | No usable signal. Fighters out 18–24 months under-performed, but not those out longer, and adding layoff to the model didn't help. |

@@ -49,3 +49,16 @@ def test_selections_cover_moneyline_method_and_distance():
     assert abs(s[("How the fight ends", "By KO/TKO")] - 0.3) < 1e-12
     assert s[("Goes the distance", "No")] == 0.5
     assert len(s) == 2 + 6 + 3 + 2
+
+
+def test_opportunity_stars_follow_expected_return():
+    assert bet_recs.opportunity(0.5, 1.8, 1.8) == (1, 0, -0.09999999999999998)
+    stars, side, ev = bet_recs.opportunity(0.3, 1.3, 3.0)  # B at 3.0, model 70%
+    assert (stars, side) == (5, 1) and abs(ev - 1.1) < 1e-9
+    assert bet_recs.opportunity(0.5, 2.2, 1.5)[0] == 2  # +10%
+    assert bet_recs.opportunity(math.nan, 2.0, 2.0)[0] == 0
+
+
+def test_opportunity_label():
+    assert bet_recs.opportunity_label(0.3, 1.3, 3.0, "A", "B") == "★★★★★  B +110%"
+    assert bet_recs.opportunity_label(0.5, math.nan, 2.0, "A", "B") == "No odds yet"
