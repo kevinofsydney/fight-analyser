@@ -141,11 +141,9 @@ profile_cols = st.columns(2)
 profiles = []
 for col, side in zip(profile_cols, (a, b), strict=True):
     fighter_id = str(side.fighter_id)
-    matches = aliases.loc[aliases["fighter_id"] == fighter_id, "source_id"].dropna().astype(str)
-    espn_ids = sorted({value for value in matches if value.isascii() and value.isdigit()})
-    if not espn_ids and fighter_id.startswith("espn:"):
-        espn_ids = [fighter_id.removeprefix("espn:")]
-    espn_id = espn_ids[0] if len(espn_ids) == 1 else None
+    espn_id = components.espn_id_for(
+        fighter_id, aliases.loc[aliases["fighter_id"] == fighter_id, "source_id"].dropna()
+    )
     with col:
         st.markdown(
             components.fighter_portrait(str(side.fighter_name), espn_id), unsafe_allow_html=True
