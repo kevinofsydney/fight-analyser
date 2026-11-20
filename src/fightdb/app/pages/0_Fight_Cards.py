@@ -15,8 +15,8 @@ import streamlit as st
 
 from fightdb.app import bet_recs, components, data, value
 
-components.page("Fight cards")
-st.title("Upcoming UFC cards")
+components.page("Fight Cards")
+st.title("Fight Cards")
 
 events = data.upcoming_events()
 changes = data.recent_changes(7)
@@ -109,7 +109,4 @@ with st.container():
             )
             st.caption(components.NAV_HINT)
 
-st.caption(
-    "Data: fight-canon-db and Greco1899 (from UFC Stats), upcoming cards from ESPN. "
-    "Model probabilities are for analysis, not betting advice."
-)
+components.footer(betting=True)

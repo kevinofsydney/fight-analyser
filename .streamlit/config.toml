@@ -6,6 +6,8 @@ gatherUsageStats = false
 
 [theme]
 base = "dark"
+# One muted accent for controls and links; blue and orange stay reserved for the two fighters.
+primaryColor = "#5fa8a0"
 
 [logger]
 # Plain logging (not rich) so uncaught page errors reach fightdb's JSON error log.

@@ -14,7 +14,7 @@ import streamlit as st
 from fightdb.app import components
 from fightdb.app.experiments import EXPERIMENTS, Experiment
 
-components.page("Experiments", "🔬")
+components.page("Experiments")
 st.title("Experiments")
 st.markdown(
     "Every idea we've tested on the prediction models, including the ones that didn't work. "

@@ -7,6 +7,7 @@ import math
 import duckdb
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 from fightdb.app import components, data, explain
 
@@ -84,7 +85,13 @@ def _polled_prices(bouts: pd.DataFrame) -> pd.DataFrame:
 
 def bouts_with_market(event_id: str | None = None) -> pd.DataFrame:
     """One row per bout (A side) with the model's chance, the bookmakers' margin-free chance and
-    best prices: closing line where known, else the latest fetched bookmaker prices."""
+    best prices: closing line where known, else the latest fetched bookmaker prices. Cached until
+    the database file changes."""
+    return _bouts_with_market(event_id, data.db_mtime())
+
+
+@st.cache_data(ttl=data.TTL, show_spinner=False)
+def _bouts_with_market(event_id: str | None, mtime: float) -> pd.DataFrame:
     try:
         sql = _BOUTS_SQL + (" AND a.event_id = ?" if event_id else "")
         bouts = data.query(sql, [event_id] if event_id else [])
@@ -157,3 +164,22 @@ def summarise(picks: pd.DataFrame) -> dict[str, float]:
         "profit": profit,
         "return": profit / staked if staked else math.nan,
     }
+
+
+def summarise_by_card(picks: pd.DataFrame) -> pd.DataFrame:
+    """`summarise` for every card at once (one grouped pass instead of a loop per card)."""
+    p = picks.assign(
+        _settled=picks["outcome"].isin(["Won", "Lost", "Void"]),
+        _staked=picks["outcome"].isin(["Won", "Lost"]),
+        _won=picks["outcome"] == "Won",
+        _profit=picks["profit"].where(picks["outcome"].isin(["Won", "Lost", "Void"]), 0.0),
+    )
+    out = p.groupby(["event_id", "event_name", "event_date"], as_index=False).agg(
+        picks=("has_pick", "sum"),
+        settled=("_settled", "sum"),
+        won=("_won", "sum"),
+        profit=("_profit", "sum"),
+        staked=("_staked", "sum"),
+    )
+    out["return"] = (out["profit"] / out["staked"]).where(out["staked"] > 0)
+    return out.drop(columns="staked")

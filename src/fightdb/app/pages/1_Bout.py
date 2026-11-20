@@ -530,7 +530,6 @@ if a.status == "scheduled":
     st.caption(
         "Run the Daily refresh workflow on GitHub to request an update; the daily odds limit still applies."
     )
-st.caption("Prices are for comparison and are not betting advice.")
 
 # --- Win and method probabilities ---------------------------------------------------------
 div = a.division
@@ -551,7 +550,7 @@ for col, s in zip(cols, (a, b), strict=True):
         st.metric(
             s.fighter_name,
             "—" if math.isnan(pw) else f"{pw:.0%} to win",
-            help="Calibrated logistic model on point-in-time ratings (walk-forward). Not betting advice.",
+            help="Calibrated logistic model on point-in-time ratings (walk-forward).",
         )
         if not math.isnan(num(s.self_implied_prob)):
             st.caption(f"Closing line implied: {num(s.self_implied_prob):.0%}")
@@ -805,7 +804,7 @@ else:
         f"at {bet_recs.MAX_UNITS:g} units. Method and distance markets are skipped while their "
         "calibration check fails. The round of a finish isn't modelled, so there are no round "
         "bets. In the backtest the closing line beat the model, and edge-sized betting lost "
-        "money in 2026 so far (Model performance). Not betting advice."
+        "money in 2026 so far (Model Performance)."
     )
 
 st.subheader("Expected fight stats")
@@ -1053,3 +1052,5 @@ if not common.empty:
         fighter_ids={"opponent": common["opp_id"], "fighter": common["fighter_id"]},
         bout_ids=common["bout_id"],
     )
+
+components.footer(betting=True)

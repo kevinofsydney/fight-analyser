@@ -15,8 +15,8 @@ import streamlit as st
 
 from fightdb.app import components, data
 
-components.page("Bout search", "🔎")
-st.title("Bout search")
+components.page("Bout Search")
+st.title("Bout Search")
 
 METHODS = {"ko_tko": "KO/TKO", "sub": "Submission", "dec": "Decision"}
 LIMIT = 500

@@ -18,7 +18,7 @@ from fightdb.features.snapshots import _wear_by_day
 from fightdb.features.stat_meta import BY_KEY
 from fightdb.models import ratings
 
-components.page("Fighter", "👤")
+components.page("Fighter")
 st.title("Fighter")
 
 fighters = data.query(
@@ -251,3 +251,5 @@ if "elo" in picked:
         "Each point is the rating going into that fight; hover to see the result and how much "
         "it moved the rating."
     )
+
+components.footer(betting=False)

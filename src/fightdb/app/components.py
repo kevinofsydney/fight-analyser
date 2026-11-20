@@ -20,8 +20,10 @@ from fightdb.features.stat_meta import BY_KEY
 CM_PER_IN = 2.54
 
 
-def page(title: str, icon: str = "🥊") -> None:
-    st.set_page_config(page_title=f"{title} · Fight Analyser", page_icon=icon, layout="wide")
+def page(title: str, icon: str | None = None) -> None:
+    """Page setup. `icon` is ignored: every page shares one tab icon, and nothing decorative is
+    shown in the page itself."""
+    st.set_page_config(page_title=f"{title} · Fight Analyser", page_icon="🥊", layout="wide")
     # Streamlit logs uncaught page exceptions on a non-propagating logger; catch them there too.
     errorlog.install("app", "streamlit.error_util")
     errorlog.bind(page=title, query=dict(st.query_params))
@@ -55,12 +57,21 @@ def _freshness_sidebar() -> None:
             return
         finished = run["finished_at"]
         age_h = (datetime.now(UTC).replace(tzinfo=None) - finished).total_seconds() / 3600
-        st.caption(f"Last refreshed {fmt_date(finished, with_time=True)} UTC ({age_h:.0f} h ago)")
-        st.caption(f"History source: {run['source']} {run['source_version'] or ''}")
+        st.caption(f"Data updated {fmt_date(finished, with_time=True)} UTC")
         if age_h > get_settings().stale_after_hours:
             st.warning(
                 f"Data is {age_h:.0f} hours old. The daily refresh may be failing; see Status."
             )
+
+
+def footer(betting: bool = False) -> None:
+    """The page's one disclaimer line."""
+    st.divider()
+    st.caption(
+        "Model numbers are estimates for analysis, not betting advice."
+        if betting
+        else "Model numbers are estimates for analysis."
+    )
 
 
 def fmt_date(value: Any, *, with_time: bool = False) -> str:
@@ -69,9 +80,7 @@ def fmt_date(value: Any, *, with_time: bool = False) -> str:
         return "—"
     if not isinstance(value, date):
         value = pd.Timestamp(value)
-    day = value.day
-    suffix = "th" if 10 <= day % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-    result = f"{day}{suffix} {value:%B %Y}"
+    result = f"{value.day} {value:%b %Y}"
     if with_time:
         result += (
             f", {value.hour % 12 or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
@@ -219,20 +228,20 @@ def open_bout(bout_id: Any) -> None:
     st.switch_page(BOUT_PAGE)
 
 
-def fighter_link(name: Any, fighter_id: Any, *, container: Any = st, icon: str = "👤") -> None:
+def fighter_link(name: Any, fighter_id: Any, *, container: Any = st) -> None:
     if fighter_id is None or pd.isna(fighter_id):
         container.markdown(f"**{name}**")
         return
-    page_link(container, FIGHTER_PAGE, str(name), icon, query_params={"fighter": str(fighter_id)})
+    page_link(container, FIGHTER_PAGE, str(name), query_params={"fighter": str(fighter_id)})
 
 
 def page_link(
-    container: Any, page: str, label: str, icon: str, query_params: dict[str, str] | None = None
+    container: Any, page: str, label: str, query_params: dict[str, str] | None = None
 ) -> None:
     """`st.page_link`, or plain bold text when the page can't be resolved: paths are relative
     to the entrypoint, so they only resolve when the app runs from Home.py (not in page tests)."""
     try:
-        container.page_link(page, label=label, icon=icon, query_params=query_params)
+        container.page_link(page, label=label, query_params=query_params)
     except StreamlitPageNotFoundError:
         container.markdown(f"**{label}**")
 

@@ -48,6 +48,11 @@ def _mtime() -> float:
     return p.stat().st_mtime if p.exists() else 0.0
 
 
+def db_mtime() -> float:
+    """Changes whenever the database file is replaced: a cache key for derived tables."""
+    return _mtime()
+
+
 def connect() -> duckdb.DuckDBPyConnection:
     """Read-only, with file and network access disabled so the SQL console cannot read
     arbitrary files on the server (e.g. `.env`) or call out to the internet."""

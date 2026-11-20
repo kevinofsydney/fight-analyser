@@ -24,8 +24,8 @@ from fightdb.app import components, data
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, OUTCOMES
 
-components.page("Saved hypotheses", "📚")
-st.title("Saved hypotheses")
+components.page("Saved Hypotheses")
+st.title("Saved Hypotheses")
 directory = get_settings().hypotheses_dir
 st.caption(
     f"Loaded from `{directory}/`. Add a YAML file there (the Hypothesis Lab writes one for you) and commit it."

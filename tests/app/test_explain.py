@@ -95,3 +95,23 @@ def test_value_picks_choose_the_side_above_the_market_and_settle_a_dollar():
         "profit": pytest.approx(1.1),
         "return": pytest.approx(1.1),
     }
+
+
+def test_summarise_by_card_matches_summarise_per_card():
+    from fightdb.app import value
+
+    picks = pd.DataFrame(
+        {
+            "event_id": ["e1", "e1", "e1", "e2", "e2"],
+            "event_name": ["E1", "E1", "E1", "E2", "E2"],
+            "event_date": ["2026-01-01"] * 3 + ["2026-02-01"] * 2,
+            "has_pick": [True, True, False, True, True],
+            "outcome": ["Won", "Void", "", "Lost", "Lost"],
+            "profit": [1.1, 0.0, float("nan"), -1.0, -1.0],
+        }
+    )
+    got = value.summarise_by_card(picks).set_index("event_id")
+    for event_id, g in picks.groupby("event_id"):
+        want = value.summarise(g)
+        for k, v in want.items():
+            assert got.loc[event_id, k] == pytest.approx(v, nan_ok=True)

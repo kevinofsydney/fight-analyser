@@ -18,7 +18,7 @@ import streamlit as st
 from fightdb.app import components, data, explain
 from fightdb.features import bout_sides as bs
 
-components.page("Matchup", "⚖️")
+components.page("Matchup")
 st.title("Matchup")
 st.caption(
     "Pick any two fighters to see who the win model favours and why, using each fighter's "
@@ -111,8 +111,10 @@ for col, fid, name in ((cols[0], a_id, a_name), (cols[1], b_id, b_name)):
         )
 st.caption(
     f"Chance the fight goes the distance: {preds.loc[a_id, 'p_distance']:.0%}. "
-    "A hypothetical fight on neutral terms; not betting advice."
+    "A hypothetical fight on neutral terms."
 )
 
 st.subheader("Why the model favours " + (a_name if preds.loc[a_id, "p_win"] >= 0.5 else b_name))
 explain.render_win_breakdown(sides.iloc[0], win_model, a_name, b_name)
+
+components.footer(betting=False)
