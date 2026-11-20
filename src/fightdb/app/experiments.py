@@ -148,6 +148,26 @@ EXPERIMENTS: list[Experiment] = [
         effect=(-0.0005, -0.0014, 0.0003),
     ),
     Experiment(
+        date(2026, 11, 20),
+        "Missing weight",
+        "A fighter who misses weight is more likely to lose that fight, and a fighter with a "
+        "history of missing weight loses more in general.",
+        "Fighters who missed weight won 42.6% of 249 fights (2018–2026), against 47.3% the "
+        "closing prices expected. Past missers who missed again won just 17 of 57 (30%, against "
+        "45% expected). Fighters with earlier misses who made weight won 46%, close to the "
+        "prices. As model inputs, neither this fight's miss nor a fighter's miss history helped "
+        "beyond chance. Backing the opponent at the best closing price would have returned "
+        "+11.6% on all 249 (range −2.7% to +26.6%) and +29.8% against repeat missers (+2.2% to "
+        "+59.6%, only 57 bets, and one of five angles tried).",
+        "This fight: +0.0002 [−0.0011, +0.0015]. Earlier misses: −0.0002 [−0.0016, +0.0013]. "
+        "Win model, 2019+ bouts. Misses are a hand-kept list from 2018 on.",
+        "no gain",
+        "A betting angle worth watching, not a model input: the miss is known only after "
+        "weigh-ins, and the sample is small.",
+        headline="Missers lose more than the odds expect; too few fights to be sure.",
+        effect=(0.0002, -0.0011, 0.0015),
+    ),
+    Experiment(
         date(2026, 11, 10),
         "Gradient boosting",
         "A tree model can find interactions a logistic regression can't.",
@@ -265,5 +285,19 @@ EXPERIMENTS: list[Experiment] = [
         "—",
         "planned",
         headline="Registered; needs fighter nationality linked first.",
+    ),
+    Experiment(
+        date(2026, 11, 20),
+        "Damage: how hurt a fighter has been",
+        "Activity alone isn't the point; a fighter coming off a light stoppage (Dan Hooker against "
+        "Parnasse) is in better shape than one who took a beating, and accumulated damage wears "
+        "fighters down.",
+        "Not run yet. Plan: recent and career strikes and knockdowns absorbed, KO losses and "
+        "short turnarounds after a KO loss, against the model's chance and the bookmakers', then "
+        "as model inputs. The inputs already exist (Fighter page fight wear). Testing them in the "
+        "model needs the owner to lift the fight-wear exclusion in AGENTS.md first.",
+        "—",
+        "planned",
+        headline="Registered for later; needs the AGENTS.md fight-wear exclusion lifted.",
     ),
 ]

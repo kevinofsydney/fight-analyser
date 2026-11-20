@@ -65,6 +65,7 @@ The optional odds feed matches both normalized fighter names and event date with
 | Apify UFC scraper actors | ❌ | Pay-per-run hosted scrapers. Unnecessary. |
 | Wikipedia (MediaWiki API) | ✅ Fallback for upcoming cards when ESPN fails (`sources/wikipedia.py`): adds missing bouts only, never cancels | Stable, documented API, CC BY-SA content; "UFC on ESPN X" pages list scheduled bouts. Parsing wikitext tables is fiddly but robust. |
 | UFC.com | 🤔 | Official card order, but HTML scraping. Consider only if ESPN and Wikipedia both fail. |
+| Weigh-in misses, hand-kept (`data/overrides/ufc_weight_misses.csv`) | ✅ In use | Official misses from 2018 on, one row per fighter per card, each with a public source link (UFC.com, commissions, MMA Junkie and similar). Updated by hand after each card ([how](../data/overrides/ufc_weight_misses.md)); loaded into `weight_misses` on every refresh. |
 
 ## Design consequences
 

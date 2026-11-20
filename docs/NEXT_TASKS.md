@@ -335,6 +335,34 @@ Win-model half-lives of 6, 8, 10 and 12 years all helped (−0.0008 to −0.0006
 
 The less active do slightly worse than the model expects, but the bookmakers already price it. A first version of the 18-month flag scored −0.0014 [−0.0029, +0.0000] only because UFC debutants (no previous UFC date) counted as inactive; counting all promotions removes it. Hooker vs Ortega moves from 38% to at most 41%. Injuries, withdrawals before 2026 and weight cuts aren't in the data.
 
+## Weight misses on 2026-11-20 (M20)
+
+**Data.** `data/overrides/ufc_weight_misses.csv` (hand-kept, 2018-01-01 through UFC 334; how to update it is in `ufc_weight_misses.md`) is loaded into a `weight_misses` table on every refresh by `pipeline/weight_misses.py`. Each row is linked to the fighter's bout on that card (event within a day; exact name, or a close spelling among that card's fighters only), preferring the completed copy when a card is stored twice, else to the fighter alone when the name is unambiguous. Names no rule can match go under `names:` in `fighter_identity.yaml` (Katlyn Chookagian → Cerminara). Result: 253 of 293 official misses linked to a bout, 36 to the fighter only (mostly cancelled bouts), 4 unlinked (cancelled, never fought in the UFC). The file lists only misses, so no row means "none recorded", and nothing before 2018 is known.
+
+**Experiment.** `scripts/weight_miss_experiment.py`, 2018+ bouts, earlier misses strictly before the bout.
+
+| Fighters | n | Won | Model expected | Closing line expected |
+|---|---|---|---|---|
+| Missed weight for this fight | 249 | 42.6% | 49.0% | 47.3% |
+| 1 earlier miss | 605 | 46.0% | 48.3% | 49.2% |
+| 2+ earlier misses | 164 | 41.5% | 48.0% | 47.4% |
+| Earlier miss, made weight | 712 | 46.2% | 48.6% | 49.1% |
+| Earlier miss, missed again | 57 | 29.8% | 44.3% | 45.2% |
+
+| Back, best closing price | Bets | Return (95% interval) |
+|---|---|---|
+| Every fighter (baseline) | 8,794 | −3.2% [−5.6%, −0.8%] |
+| Opponent of a fighter who missed weight | 249 | +11.6% [−2.7%, +26.6%] |
+| Opponent of a past misser who missed again | 57 | +29.8% [+2.2%, +59.6%] |
+| Opponent of a past misser who made weight | 704 | +4.9% [−3.8%, +13.2%] |
+| Opponent of a 2+ time misser | 163 | +8.2% [−8.0%, +25.2%] |
+
+Win model (2019+): this fight's miss +0.0002 [−0.0011, +0.0015], earlier misses −0.0002 [−0.0016, +0.0013], any earlier miss −0.0002, both −0.0004/+0.0001; no gain. The +11.6% held in both 2018–21 (+14.6%) and 2022–26 (+9.3%) but neither half is significant on its own. The repeat-misser angle is significant only before allowing for five angles tried. A miss is known only after weigh-ins, so it can only matter if the CSV is updated on weigh-in day.
+
 ## Registered, not run: travel and Middle East judging (F8)
 
 Owner idea 2026-11-20. (1) Home advantage and travel: distance from the fighter's home country and fighting at home, against the model's chance. (2) Judging: judges' round scores vs the stat-predicted round winner (`ratings.ROUND_WEIGHTS`) for fighters from Russia, the Caucasus, Central Asia and the Arab world on Middle East cards (about 31 events: Abu Dhabi, Riyadh, Doha, Baku) vs elsewhere. **Blocker:** `fighters.nationality` is almost empty (28 of 2,838); `pro_fighters.nationality` covers about 84,000 of 185,000 but isn't joined to UFC fighter IDs yet (24 matches by ID), so link by the M6 name rules first. Surname endings (-ov/-ev) only as a separately reported fallback. Supersedes F1.
+
+## Registered, not run: damage (F9)
+
+Owner idea 2026-11-20, kept for later. How hurt a fighter has been, as opposed to how often they fight (M19): recent and career strikes and knockdowns absorbed, KO losses, and short turnarounds after a KO loss, against the model and the closing line, then as walk-forward inputs. The `wear_*` snapshot columns already exist. **Blocker:** AGENTS.md excludes evaluating fight-wear features for the model until the owner lifts it.

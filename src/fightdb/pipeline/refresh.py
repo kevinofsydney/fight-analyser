@@ -22,7 +22,7 @@ import httpx
 from fightdb import errorlog, notify
 from fightdb.config import Settings
 from fightdb.db.conn import init_db
-from fightdb.pipeline import backfill, build, odds, quality, upcoming
+from fightdb.pipeline import backfill, build, odds, quality, upcoming, weight_misses
 from fightdb.sources import espn, http, odds_api, wikipedia
 from fightdb.sources.models import UpcomingEvent
 
@@ -112,6 +112,11 @@ def run_refresh(
                         report["warnings"].append(
                             "Upcoming odds refresh failed; previous quotes retained"
                         )
+                try:
+                    report["counts"].update(weight_misses.load(con, settings.overrides_dir))
+                except Exception as exc:  # noqa: BLE001 - a bad CSV row must not stop refresh
+                    log.exception("weight misses failed")
+                    report["warnings"].append(f"weight misses not loaded: {exc}")
                 if not _completed_bouts(con):
                     raise RuntimeError("database has no completed bouts; run a backfill first")
                 report["counts"].update(build.build_all(con, train_models=train_models))
