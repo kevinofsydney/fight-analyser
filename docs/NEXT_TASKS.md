@@ -292,3 +292,25 @@ Owner brief: much easier to read, "less is more", no decorative AI-style UI (eye
 - **Experiments:** three numbers, one chart of each measured idea's effect with its 95% range, one line per idea with details collapsed, and an All / Didn't help / Shipped filter. Each `Experiment` now has a `headline` and, where measured, an `effect`.
 - **Model Performance:** three headline numbers; input importance and edge-size returns moved into a collapsed "More detail".
 - **Speed:** cached scored bouts, card summaries, market prices and betting results; Value Picks summarises cards in one grouped pass. Warm reruns: Previous Cards 0.39 → 0.02 s, Value Picks 0.58 → 0.05 s, Model Performance 0.40 → 0.12 s; every other page within noise (Bout 0.268 s on main vs 0.264 s).
+
+## Recency on 2026-11-20 (M18)
+
+`scripts/recency_experiment.py`, on the 2026-11-19 release rebuilt with M14. Two separate questions.
+
+**1. Training recency (shipped).** Refit each walk-forward year with sample weights halving every H years before the test year. The unweighted run reproduces the current model exactly (0.6367 / 1.5860).
+
+| Weighting | Win log loss change (95% interval) | Method log loss change | KO / sub / dec gates |
+|---|---|---|---|
+| Win model, 2 years | −0.0005 [−0.0021, +0.0011] | −0.0004 | pass / pass / pass |
+| Win model, 4 years | −0.0009 [−0.0019, +0.0001] | −0.0008 | pass / pass / pass |
+| **Win model, 8 years (shipped)** | **−0.0007 [−0.0013, −0.0002]** | −0.0007 [−0.0012, −0.0001] | pass / pass / pass |
+| Method model, 2 / 4 / 8 years | 0 | +0.0048 / +0.0003 / −0.0007 | 4 years fails KO |
+| Both, 8 years | −0.0007 | −0.0013 [−0.0025, −0.0001] | KO fails |
+
+Win-model half-lives of 6, 8, 10 and 12 years all helped (−0.0008 to −0.0006, every interval below zero, on 2020+ alone too), so the choice isn't a lucky pick; 8 is the middle. `outcome.WIN_HALF_LIFE_YEARS = 8`; weights count back from the year after the latest training fight. Full rebuild: win 0.6367 → 0.6360, accuracy 64.0% → 64.1%, method 1.5860 → 1.5854, all gates pass. `feature_importance` still uses unweighted fits (diagnostic only).
+
+**2. Fighter recency (no gain).** Recency-weighted per-minute striking, takedown, knockdown and control rates (half-life 1, 2 or 4 years, shrunk by 15 minutes), as fighter gaps on top of the win model: +0.0008 [−0.0006, +0.0023] and similar; recent-minus-career trends ±0.0001. Dan Hooker's decline is visible (landed 4.82 → 4.50, absorbed 4.94 → 5.42 a minute at a 2-year half-life) but the ratings already carry it.
+
+## Registered, not run: travel and Middle East judging (F8)
+
+Owner idea 2026-11-20. (1) Home advantage and travel: distance from the fighter's home country and fighting at home, against the model's chance. (2) Judging: judges' round scores vs the stat-predicted round winner (`ratings.ROUND_WEIGHTS`) for fighters from Russia, the Caucasus, Central Asia and the Arab world on Middle East cards (about 31 events: Abu Dhabi, Riyadh, Doha, Baku) vs elsewhere. **Blocker:** `fighters.nationality` is almost empty (28 of 2,838); `pro_fighters.nationality` covers about 84,000 of 185,000 but isn't joined to UFC fighter IDs yet (24 matches by ID), so link by the M6 name rules first. Surname endings (-ov/-ev) only as a separately reported fallback. Supersedes F1.
