@@ -71,13 +71,21 @@ summary_col.header(bio["name"] + (f' "{nickname}"' if nickname else ""))
 c = st.columns(5)
 record = [bio["pro_wins"], bio["pro_losses"], bio["pro_draws"]]
 c[0].metric(
-    "Pro record (current)",
+    "Pro record",
     "-".join(f"{value:.0f}" for value in record)
     if all(pd.notna(value) for value in record)
     else "—",
 )
-c[1].metric("Height", components.fmt_stat("height_cm", bio["height_cm"]))
-c[2].metric("Reach", components.fmt_stat("reach_cm", bio["reach_cm"]))
+c[1].metric(
+    "Height",
+    "—" if pd.isna(bio["height_cm"]) else f"{bio['height_cm']:.0f} cm",
+    help=components.fmt_stat("height_cm", bio["height_cm"]),
+)
+c[2].metric(
+    "Reach",
+    "—" if pd.isna(bio["reach_cm"]) else f"{bio['reach_cm']:.0f} cm",
+    help=components.fmt_stat("reach_cm", bio["reach_cm"]),
+)
 c[3].metric("Stance", bio["stance"] if pd.notna(bio["stance"]) else "—")
 c[4].metric("Elo now", f"{latest['self_elo']:.0f}")
 
@@ -123,9 +131,7 @@ else:
     st.caption(
         f"Last 3 UFC fights: {'—' if pd.isna(recent) else f'{recent:.0f}'} significant strikes absorbed. Complete strike stats: {int(current['wear_stats_fights'])} of {len(wear_input)} fights."
     )
-    st.caption(
-        "These are recorded UFC exposures, not a medical diagnosis. Missing round statistics make totals unavailable."
-    )
+    st.caption("Recorded UFC exposure, not a medical diagnosis.")
 
 st.subheader("UFC fights")
 done = hist[hist["status"] == "completed"]

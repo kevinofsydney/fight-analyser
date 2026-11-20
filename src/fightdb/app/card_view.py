@@ -179,10 +179,10 @@ def counts(s: dict[str, float]) -> str:
 def card_metrics(card: pd.DataFrame) -> None:
     s = past_cards.summary(card)
     c = st.columns(5 if "flat_profit" in card else 4)
-    c[0].metric("Model picked the winner", pct(s["model_right"], s["decisive"]))
-    c[1].metric("Bookmakers picked the winner", pct(s["market_right"], s["with_market"]))
+    c[0].metric("Model right", pct(s["model_right"], s["decisive"]))
+    c[1].metric("Bookmakers right", pct(s["market_right"], s["with_market"]))
     c[2].metric(
-        "Model's likeliest ending",
+        "Likeliest ending",
         pct(s["ending_right"], s["endings"]),
         help="How often the model's likeliest of the six endings (either fighter by KO/TKO, "
         "submission or decision) happened.",
@@ -190,14 +190,14 @@ def card_metrics(card: pd.DataFrame) -> None:
     if "flat_profit" in card:
         flat, edge = card["flat_profit"].sum(min_count=1), card["edge_profit"].sum(min_count=1)
         c[3].metric(
-            "$100 on every pick",
+            "$100 a pick",
             money(float(flat)),
             help="$100 on the model's pick in every bout with a price, at the best price.",
         )
-        c[4].metric("Sized by edge", money(float(edge)), help=EDGE_HELP)
+        c[4].metric("Edge-sized", money(float(edge)), help=EDGE_HELP)
     else:
         c[3].metric(
-            "Biggest upset (model)",
+            "Biggest upset",
             f"{card['p_winner'].min():.0%}" if card["p_winner"].notna().any() else "—",
             help="The lowest chance the model gave a fighter who went on to win.",
         )

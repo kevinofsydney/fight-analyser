@@ -19,9 +19,8 @@ from fightdb.app import components, explain, value
 components.page("Value Picks")
 st.title("Value Picks")
 st.caption(
-    "For each card: the fighters the model rates at least the chosen margin above the "
-    "bookmakers' margin-free chance, the best price, and for past cards how they turned out "
-    "(a $1 stake per pick)."
+    "Fighters the model rates at least the chosen margin above the bookmakers, and for past "
+    "cards how a $1 stake on each did."
 )
 
 all_bouts = value.bouts_with_market()
@@ -135,10 +134,8 @@ components.nav_table(
     },
 )
 st.caption(
-    f"{components.NAV_HINT} "
-    "Bouts without a pick are those where the model and the bookmakers are within the minimum "
-    "edge. Past cards use the closing line where available, otherwise the last bookmaker prices "
-    "fetched before the event."
+    f"{components.NAV_HINT} Past cards use the closing line, or the last prices fetched before "
+    "the event."
 )
 
 st.subheader("Every past card")

@@ -20,6 +20,7 @@ st.title("Fight Cards")
 
 events = data.upcoming_events()
 changes = data.recent_changes(7)
+st.caption(f"Main event first. {components.NAV_HINT}")
 
 with st.expander(f"Card changes in the last 7 days ({len(changes)})", expanded=False):
     if changes.empty:
@@ -35,12 +36,11 @@ with st.container():
     if events.empty:
         st.info("No upcoming events found. The ESPN feed may be empty or the last refresh failed.")
     for ev in events.itertuples():
+        where = f" · {str(ev.location).split(',')[-1].strip()}" if ev.location else ""
         with st.expander(
-            f"**{ev.name}** · {components.fmt_date(ev.date)} · {ev.bouts} bouts",
+            f"**{ev.name}** · {components.fmt_date(ev.date)}{where}",
             expanded=ev.Index == 0,
         ):
-            if ev.location:
-                st.caption(ev.location)
             card = data.event_card(ev.event_id)
             if card.empty:
                 st.caption("No bouts listed yet.")
@@ -86,7 +86,7 @@ with st.container():
                 fighter_ids={"fighter_name": card["fighter_id"], "opp_name": card["opp_id"]},
                 bout_ids=card["bout_id"],
                 column_config={
-                    "fighter_name": "Fighter (main event first)",
+                    "fighter_name": "Fighter",
                     "opp_name": "Opponent",
                     "weight_class": "Weight class",
                     "scheduled_rounds": "Rds",
@@ -107,6 +107,5 @@ with st.container():
                     ),
                 },
             )
-            st.caption(components.NAV_HINT)
 
 components.footer(betting=True)

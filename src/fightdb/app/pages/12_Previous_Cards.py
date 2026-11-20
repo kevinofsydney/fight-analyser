@@ -16,10 +16,8 @@ from fightdb.app import card_view, components, past_cards
 components.page("Previous Cards")
 st.title("Previous Cards")
 st.caption(
-    "How the model's picks turned out, card by card. Each bout is scored by the model trained "
-    "on every fight before that year, so it never saw the result. Upcoming bouts use a model "
-    "that also knows this year's fights, so the number shown before a fight can differ from "
-    "the one here by a point or two."
+    "Each bout is scored by a model trained only on earlier years, so numbers can differ by a "
+    "point or two from what showed before the fight."
 )
 
 scored = card_view.load_scored()
@@ -46,9 +44,9 @@ BRIER_HELP = (
     "price. Lower is better; always saying 50% scores 0.250."
 )
 c = st.columns(4)
-c[0].metric("Model picked the winner", _pct(total["model_right"], total["decisive"]))
+c[0].metric("Model right", _pct(total["model_right"], total["decisive"]))
 c[1].metric(
-    "Bookmakers picked the winner",
+    "Bookmakers right",
     _pct(total["market_right"], total["with_market"]),
     help="Closing-line favourite, or the last bookmaker prices fetched before the event.",
 )
@@ -61,7 +59,9 @@ c[2].metric(
 c[3].metric("Bookmakers Brier", f"{total['market_brier']:.3f}" if both else "—", help=BRIER_HELP)
 st.caption(_counts(total))
 picked = st.dataframe(
-    recent.assign(event_date=recent["event_date"].map(components.fmt_date)),
+    components.as_pct(recent, ("model_pct", "market_pct")).assign(
+        event_date=recent["event_date"].map(components.fmt_date)
+    ),
     hide_index=True,
     width="stretch",
     on_select="rerun",
@@ -82,17 +82,17 @@ picked = st.dataframe(
         "event_date": "Date",
         "model": "Model right",
         "model_pct": st.column_config.ProgressColumn(
-            "Model %", format="percent", min_value=0.0, max_value=1.0
+            "Model %", format="%.0f%%", min_value=0.0, max_value=100.0
         ),
         "market": "Bookmakers right",
         "market_pct": st.column_config.ProgressColumn(
-            "Bookmakers %", format="percent", min_value=0.0, max_value=1.0
+            "Bookmakers %", format="%.0f%%", min_value=0.0, max_value=100.0
         ),
         "model_brier": st.column_config.NumberColumn("Model Brier", format="%.3f"),
         "market_brier": st.column_config.NumberColumn("Bookmakers Brier", format="%.3f"),
     },
 )
-st.caption("Select a card to show its bouts below. Draws and no contests are left out.")
+st.caption("Select a card to show its bouts. Draws and no contests are left out.")
 
 labels = {
     r.event_id: f"{r.event_name} · {components.fmt_date(r.event_date)}" for r in cards.itertuples()

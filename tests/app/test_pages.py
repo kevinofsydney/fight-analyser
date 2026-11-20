@@ -109,11 +109,11 @@ def test_past_bout_shows_elo_and_round_stats(db):
         assert stance_row[fighter] == (stance.strip() if stance and stance.strip() else "—")
     elo_metrics = [m for m in at.metric if "Elo before fight" in m.label]
     assert elo_metrics and all("K × (result − expected)" in m.help for m in elo_metrics)
-    assert any(e.label == "How Elo was calculated" for e in at.expander)
+    assert any(e.label == "Elo ratings" for e in at.expander)
     assert any(
         "Opponent Elo" in df.value.columns and "Change" in df.value.columns for df in at.dataframe
     ) or any("No earlier UFC fights" in c.value for c in at.caption)
-    assert any(h.value == "Fight statistics by round" for h in at.subheader)
+    assert any(m.value == "**Fight statistics by round**" for m in at.markdown)
     projections = next(df.value for df in at.dataframe if "Projection" in df.value.columns)
     assert {
         "Takedown defence (vs this opponent)",
@@ -243,7 +243,7 @@ def test_bout_shows_historical_closing_prices(db, tmp_path, monkeypatch):
         edge = next(df.value for df in at.dataframe if "Bookmakers' chance" in df.value.columns)
         assert edge["Best price"].round(4).tolist() == [round(1 + 100 / 150, 4), 2.5]
         assert edge["Edge"].iloc[0] == pytest.approx(100 * (p_a - 0.62))
-        assert any(h.value == "Prediction vs result" for h in at.subheader)
+        assert any(m.value == "**Prediction vs result**" for m in at.markdown)
         assert any(
             " won" in m.value or "Draw" in m.value or "No contest" in m.value for m in at.markdown
         )
@@ -539,7 +539,7 @@ def test_model_performance_page_reports_backtest_and_inputs(db):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     labels = {m.label for m in at.metric}
-    assert {"Fights scored", "Model picked the winner", "Brier score"} <= labels
+    assert {"Model picked the winner", "Brier score, model vs bookmakers"} <= labels
     inputs = next(df.value for df in at.dataframe if "Lost if removed" in df.value.columns)
     assert len(inputs) == 20
     assert any("Return per $1" in df.value.columns for df in at.dataframe) or any(

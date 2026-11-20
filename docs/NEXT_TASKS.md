@@ -282,3 +282,13 @@ Confirmed by a full rebuild of the 2026-11-19 release: 1.5985 → 1.5860, all ga
 ## Experiments page on 2026-11-20 (M16)
 
 The app's **Experiments** page lists every model experiment in plain language (idea, what we found, numbers, verdict), with tabs for "Didn't help" and "Shipped". The entries live in `src/fightdb/app/experiments.py`: **add one there whenever an experiment finishes**, alongside the full write-up here.
+
+## Look and speed pass on 2026-11-20 (M17)
+
+Owner brief: much easier to read, "less is more", no decorative AI-style UI (eyebrows, kickers, hero banners, emoji, gradients), and no page may get slower.
+
+- **Shared:** one muted accent colour (blue and orange are reserved for the two fighters), plain sidebar names, dates like "21 Nov 2026", page titles that match the sidebar, one disclaimer line per page (`components.footer`), whole-number percentages in tables (`components.as_pct` + `pct_column`).
+- **Bout page order:** fighters → Prediction → Betting (odds, model vs bookmakers, line movement, suggested bets) → Expected fight stats (per round collapsed) → Side by side → How the model got here (all collapsed, Elo included) → Context (hypotheses, common opponents, round stats). Captions cut to one short line each.
+- **Experiments:** three numbers, one chart of each measured idea's effect with its 95% range, one line per idea with details collapsed, and an All / Didn't help / Shipped filter. Each `Experiment` now has a `headline` and, where measured, an `effect`.
+- **Model Performance:** three headline numbers; input importance and edge-size returns moved into a collapsed "More detail".
+- **Speed:** cached scored bouts, card summaries, market prices and betting results; Value Picks summarises cards in one grouped pass. Warm reruns: Previous Cards 0.39 → 0.02 s, Value Picks 0.58 → 0.05 s, Model Performance 0.40 → 0.12 s; every other page within noise (Bout 0.268 s on main vs 0.264 s).

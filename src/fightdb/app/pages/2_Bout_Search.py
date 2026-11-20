@@ -104,7 +104,7 @@ shown = pd.DataFrame(
             "—",
             np.where(found["self_p_win"] >= 0.5, found["fighter_name"], found["opp_name"]),
         ),
-        "Model %": np.maximum(found["self_p_win"], 1 - found["self_p_win"]),
+        "Model %": 100 * np.maximum(found["self_p_win"], 1 - found["self_p_win"]),
         "Model right?": np.where(
             found["self_p_win"].isna() | ~((found["won"] == 1) | (found["lost"] == 1)),
             "—",
@@ -142,7 +142,7 @@ components.nav_table(
         "Model favourite": favourite_id,
     },
     bout_ids=found["bout_id"],
-    column_config={"Model %": st.column_config.NumberColumn(format="percent")},
+    column_config={"Model %": components.pct_column()},
 )
 st.caption(
     f"{components.NAV_HINT} Model columns show the pre-fight prediction from "
