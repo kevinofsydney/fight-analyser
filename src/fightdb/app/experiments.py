@@ -24,6 +24,10 @@ class Experiment:
     numbers: str
     verdict: Verdict
     lesson: str = ""
+    headline: str = ""
+    # Change in walk-forward win-model log loss from adding the idea, with its 95% interval
+    # (negative is better). Only for experiments measured that way.
+    effect: tuple[float, float, float] | None = None
 
 
 EXPERIMENTS: list[Experiment] = [
@@ -39,6 +43,8 @@ EXPERIMENTS: list[Experiment] = [
         "or pro fights instead or as well: all within ±0.0007, every interval spanning zero.",
         "no gain",
         "Streaks are mostly a symptom of quality, which the ratings already measure.",
+        headline="Already explained by fighter quality.",
+        effect=(0.0002, -0.0003, 0.0007),
     ),
     Experiment(
         date(2026, 11, 20),
@@ -54,6 +60,8 @@ EXPERIMENTS: list[Experiment] = [
         "+0.0010]. Dropping age altogether costs +0.0110, so age matters, but in a straight line.",
         "no gain",
         "The existing straight-line age gap is the right shape.",
+        headline="Younger fighters win more at every age; there's no peak.",
+        effect=(0.0, -0.001, 0.001),
     ),
     Experiment(
         date(2026, 11, 20),
@@ -65,6 +73,8 @@ EXPERIMENTS: list[Experiment] = [
         "Log days since last fight: +0.0005. Layoff over 1 year or 18 months, or a layoff × age "
         "term: all within ±0.0003, intervals spanning zero.",
         "no gain",
+        headline="A dip after 18–24 months out, but nothing the model can use.",
+        effect=(0.0003, -0.0011, 0.0018),
     ),
     Experiment(
         date(2026, 11, 20),
@@ -77,6 +87,7 @@ EXPERIMENTS: list[Experiment] = [
         "no gain",
         "The bet-opportunity stars on Fight Cards rank disagreement with the market, not proven "
         "value.",
+        headline="Bigger gaps to the price haven't earned more.",
     ),
     Experiment(
         date(2026, 11, 13),
@@ -87,6 +98,7 @@ EXPERIMENTS: list[Experiment] = [
         "beat the simple version.",
         "0.6363–0.6398 against 0.6361 for the chosen version.",
         "no gain",
+        headline="The simple version was best.",
     ),
     Experiment(
         date(2026, 11, 11),
@@ -97,6 +109,7 @@ EXPERIMENTS: list[Experiment] = [
         "defence gaps are exactly a sum of two inputs the model already has.",
         "All within ±0.002, intervals spanning zero.",
         "no gain",
+        headline="Nothing the model didn't already have.",
     ),
     Experiment(
         date(2026, 11, 10),
@@ -108,6 +121,7 @@ EXPERIMENTS: list[Experiment] = [
         "0.6540 vs 0.6548 at the time; KO and decision gates failed.",
         "harmful",
         "Worth retrying: the method calibration problem that blocked it was fixed on 2026-11-20.",
+        headline="Slightly better, but broke calibration. Worth retrying.",
     ),
     Experiment(
         date(2026, 11, 10),
@@ -119,6 +133,7 @@ EXPERIMENTS: list[Experiment] = [
         "0.6490+ on 2020+ vs 0.6437.",
         "harmful",
         "Never add 'is this field missing?' flags for profile data.",
+        headline="Worse on recent years; its apparent gain was hindsight.",
     ),
     Experiment(
         date(2026, 11, 10),
@@ -128,6 +143,7 @@ EXPERIMENTS: list[Experiment] = [
         "No measurable change: the estimated settings were already about right.",
         "Shrinkage ×0.5, ×2, ×4: ±0.0007. Hinges and C 0.05–5: no change.",
         "no gain",
+        headline="The settings were already about right.",
     ),
     Experiment(
         date(2026, 11, 11),
@@ -137,6 +153,7 @@ EXPERIMENTS: list[Experiment] = [
         "The real fix came later (all-promotion finish shares).",
         "Method log loss unchanged; KO gate still failing.",
         "no gain",
+        headline="Didn't fix it; a later idea did.",
     ),
     Experiment(
         date(2026, 11, 9),
@@ -146,6 +163,7 @@ EXPERIMENTS: list[Experiment] = [
         "not evaluated for it, by the owner's decision.",
         "—",
         "not tested",
+        headline="Kept out of the model by choice.",
     ),
     # Shipped
     Experiment(
@@ -158,6 +176,7 @@ EXPERIMENTS: list[Experiment] = [
         "Method log loss 1.5985 → 1.5860; all three calibration gates pass. McKinney by "
         "decision 28% → 17%.",
         "shipped",
+        headline="The method model's biggest gain, and it fixed the KO/TKO calibration.",
     ),
     Experiment(
         date(2026, 11, 13),
@@ -166,6 +185,8 @@ EXPERIMENTS: list[Experiment] = [
         "Small but real gain, using judges' round scores where available.",
         "0.6402 → 0.6367, accuracy 63.6% → 64.0%.",
         "shipped",
+        headline="A small, real gain.",
+        effect=(-0.0035, -0.0059, -0.0012),
     ),
     Experiment(
         date(2026, 11, 11),
@@ -174,6 +195,8 @@ EXPERIMENTS: list[Experiment] = [
         "The biggest single gain. Bouts with a UFC debutant improved most.",
         "0.6548 → 0.6402, accuracy 61.2% → 63.6%.",
         "shipped",
+        headline="The biggest single gain, especially for debutants.",
+        effect=(-0.0144, -0.0188, -0.0101),
     ),
     Experiment(
         date(2026, 11, 10),
@@ -182,5 +205,6 @@ EXPERIMENTS: list[Experiment] = [
         "Squaring the strength-of-schedule adjustment helped a little; no adjustment was worst.",
         "0.6556 → 0.6548, accuracy 60.9% → 61.2%.",
         "shipped",
+        headline="A small gain.",
     ),
 ]

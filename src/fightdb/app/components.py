@@ -270,3 +270,13 @@ def nav_table(
             open_fighter(fid)
     elif bout_ids is not None:
         open_bout(bout_ids.iloc[int(row)])
+
+
+def as_pct(frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.DataFrame:
+    """Shares (0-1) as percentages (0-100) for display with `pct_column`."""
+    return frame.assign(**{c: 100 * frame[c] for c in columns if c in frame})
+
+
+def pct_column(label: str | None = None, help: str | None = None) -> Any:
+    """A whole-number percentage column (values already 0-100)."""
+    return st.column_config.NumberColumn(label, format="%.0f%%", help=help)

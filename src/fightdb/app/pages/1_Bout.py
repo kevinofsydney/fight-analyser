@@ -231,127 +231,6 @@ st.dataframe(
     height="content",
 )
 
-if a.status == "completed":
-    st.subheader("Prediction vs result")
-    predicted, happened = st.columns(2)
-    outcomes = explain.likely_outcomes(a, b)
-    with predicted:
-        st.markdown("**Model before the fight**")
-        if outcomes is None:
-            st.caption("No model prediction for this bout: the backtest starts in 2012.")
-        else:
-            fav, fav_p = (
-                (a, num(a.self_p_win)) if num(a.self_p_win) >= 0.5 else (b, num(b.self_p_win))
-            )
-            st.markdown(f"Favourite: **{fav.fighter_name}**, {fav_p:.0%} to win")
-            top = outcomes.iloc[0]
-            st.markdown(f"Most likely ending: **{top['label']}** ({top['p']:.0%})")
-            market = num(a.self_implied_prob)
-            if not math.isnan(market):
-                mfav = a if market >= 0.5 else b
-                st.caption(
-                    f"Bookmakers' closing favourite: {mfav.fighter_name} "
-                    f"({max(market, 1 - market):.0%})."
-                )
-    with happened:
-        st.markdown("**What happened**")
-        st.markdown(explain.result_text(a, b))
-        if outcomes is not None and (num(a.won) == 1 or num(b.won) == 1):
-            winner = a if num(a.won) == 1 else b
-            winner_p = num(winner.self_p_win)
-            if winner_p >= 0.5:
-                st.success(f"The model picked the winner ({winner_p:.0%}).")
-            else:
-                st.error(
-                    f"Upset by the model's numbers: it gave {winner.fighter_name} {winner_p:.0%}."
-                )
-            actual = explain.actual_outcome(a, b)
-            if actual is not None:
-                rank = int(outcomes.index[outcomes["key"] == actual][0]) + 1
-                st.caption(
-                    f"The actual ending was the model's #{rank} of 6 most likely "
-                    f"({float(outcomes.loc[outcomes['key'] == actual, 'p'].iloc[0]):.0%})."
-                )
-
-ELO_HELP = (
-    f"Every fighter starts at {ratings.ELO_START:.0f}. After each UFC fight, Elo changes by "
-    f"K × (result − expected): result is 1 for a win, 0.5 for a draw and 0 for a loss; "
-    f"expected = 1 / (1 + 10^((opponent Elo − own Elo) / 400)); "
-    f"K = {ratings.ELO_K:.0f}, or {ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or "
-    "submission. No contests don't count. Open “How Elo was calculated” below for each fight."
-)
-RESULT_LABELS = {"W": "Win", "L": "Loss", "D": "Draw", "NC": "No contest"}
-METHOD_LABELS = {"ko_tko": "KO/TKO", "sub": "Submission", "dec": "Decision"}
-
-elo_cols = st.columns(2)
-for col, side in zip(elo_cols, (a, b), strict=True):
-    col.metric(
-        f"{side.fighter_name} · Elo before fight",
-        f"{num(side.self_elo):.0f}" if not math.isnan(num(side.self_elo)) else "—",
-        help=ELO_HELP,
-    )
-
-with st.expander("How Elo was calculated"):
-    st.markdown(
-        f"Each fighter starts at **{ratings.ELO_START:.0f}**. After every UFC fight the rating "
-        "moves by **K × (result − expected)**:\n"
-        "- **result**: 1 for a win, 0.5 for a draw, 0 for a loss (no contests don't count)\n"
-        "- **expected**: the chance of winning implied by the two ratings, "
-        "1 / (1 + 10^((opponent − own) / 400)); a 100-point edge means about 64%\n"
-        f"- **K**: {ratings.ELO_K:.0f} for a decision, "
-        f"{ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or submission\n\n"
-        "Beating a higher-rated opponent earns more than beating a lower-rated one, and the "
-        "opponent loses what the winner gains. Fights on the same day use ratings from before "
-        "that day. Only fights before this bout count."
-    )
-    for side in (a, b):
-        history = data.query(
-            """SELECT bout_id, event_date, opp_id, opp_name, self_elo, opp_elo, result,
-                      method_group
-               FROM bout_sides
-               WHERE fighter_id = ? AND status = 'completed' AND event_date < ?""",
-            [side.fighter_id, side.event_date],
-        )
-        steps = ratings.elo_breakdown(history)
-        components.fighter_link(side.fighter_name, side.fighter_id)
-        if steps.empty:
-            st.caption(
-                f"No earlier UFC fights, so the rating is the {ratings.ELO_START:.0f} starting value."
-            )
-            continue
-        # elo_breakdown keeps this order, so the IDs line up row for row.
-        ordered = history.sort_values(["event_date", "bout_id"]).reset_index(drop=True)
-        components.nav_table(
-            pd.DataFrame(
-                {
-                    "Date": steps["event_date"].map(components.fmt_date),
-                    "Opponent": steps["opp_name"],
-                    "Elo before": steps["self_elo"].round(0),
-                    "Opponent Elo": steps["opp_elo"].round(0),
-                    "Expected win": (100 * steps["expected"]).round(0).astype(int).astype(str)
-                    + "%",
-                    "Result": steps["result"].map(lambda r: RESULT_LABELS.get(r, r or "—")),
-                    "Method": steps["method_group"].map(lambda m: METHOD_LABELS.get(m, m or "—")),
-                    "K": steps["k"],
-                    "Change": steps["change"].round(1),
-                    "Elo after": steps["elo_after"].round(0),
-                }
-            ),
-            key=f"elo_steps_{side.fighter_id}",
-            fighter_ids={"Opponent": ordered["opp_id"]},
-            bout_ids=ordered["bout_id"],
-            column_config={
-                "Change": st.column_config.NumberColumn(format="%+.1f"),
-                "Elo before": st.column_config.NumberColumn(format="%.0f"),
-                "Opponent Elo": st.column_config.NumberColumn(format="%.0f"),
-                "Elo after": st.column_config.NumberColumn(format="%.0f"),
-                "K": st.column_config.NumberColumn(format="%.0f"),
-            },
-        )
-        st.caption(
-            f"{ratings.ELO_START:.0f} {steps['change'].sum():+.1f} over {len(steps)} fights "
-            f"= {num(side.self_elo):.0f} before this bout."
-        )
 
 for side in (a, b):
     if num(side.self_ufc_fights) < 3:
@@ -359,177 +238,7 @@ for side in (a, b):
             f"{side.fighter_name} has {int(num(side.self_ufc_fights))} prior UFC fights: rates are mostly the division average (shrinkage) and noisy."
         )
 
-if a.status == "completed":
-    fight_stats = data.query(
-        """SELECT r.round AS "Round", f.name AS "Fighter", r.kd AS "Knockdowns",
-                  r.sig_l AS "Sig. strikes landed", r.sig_a AS "Sig. strikes attempted",
-                  r.tot_l AS "Total strikes landed", r.tot_a AS "Total strikes attempted",
-                  r.td_l AS "Takedowns landed", r.td_a AS "Takedowns attempted",
-                  r.sub_att AS "Submission attempts", r.rev AS "Reversals", r.ctrl_s AS "Control seconds"
-           FROM round_stats r JOIN fighters f USING (fighter_id)
-           WHERE r.bout_id = ? ORDER BY r.round, f.name""",
-        [bout_id],
-    )
-    st.subheader("Fight statistics by round")
-    if fight_stats.empty:
-        st.caption("Round statistics are not available for this fight.")
-    else:
-        st.dataframe(fight_stats, hide_index=True, width="stretch")
-
-# --- Market odds ---------------------------------------------------------------------------
-st.subheader("Fight odds")
-if a.status == "completed":
-    odds_rows = []
-    for side in (a, b):
-        price = closing.loc[side.fighter_id] if side.fighter_id in closing.index else None
-        values = (
-            sorted({int(x) for x in price[["close_low", "close_high"]].dropna() if x != 0})
-            if price is not None
-            else []
-        )
-        decimal = [components.decimal_odds_from_american(v) for v in values]
-        odds_rows.append(
-            {
-                "Fighter": side.fighter_name,
-                "Closing price (decimal)": " – ".join(f"{d:.2f}" for d in decimal) or "—",
-                "American": " to ".join(components.format_american_odds(v) for v in values) or "—",
-            }
-        )
-    st.dataframe(pd.DataFrame(odds_rows), hide_index=True, width="stretch")
-    st.caption(
-        "Closing price range across bookmakers, from fight-canon-db; availability varies by "
-        "fight and bookmaker."
-    )
-    best = [
-        components.decimal_odds_from_american(
-            max(closing.loc[s.fighter_id, ["close_low", "close_high"]].dropna(), default=None)
-        )
-        if s.fighter_id in closing.index
-        else None
-        for s in (a, b)
-    ]
-    market = [num(a.self_implied_prob), num(b.self_implied_prob)]
-    if not any(math.isnan(m) for m in market) and not math.isnan(num(a.self_p_win)):
-        st.markdown("**Model vs bookmakers (closing)**")
-        st.dataframe(
-            explain.edge_display(
-                explain.edge_table(
-                    [str(a.fighter_name), str(b.fighter_name)],
-                    [num(a.self_p_win), num(b.self_p_win)],
-                    market,
-                    [math.nan if o is None else o for o in best],
-                )
-            ),
-            hide_index=True,
-            width="stretch",
-            column_config=explain.EDGE_COLUMNS,
-        )
-        st.caption(explain.EDGE_NOTE)
-else:
-    if prices.empty:
-        st.caption("No upcoming bookmaker odds are available for this fight yet.")
-    else:
-        names = {a.fighter_id: a.fighter_name, b.fighter_id: b.fighter_name}
-        prices["Fighter"] = prices["fighter_id"].map(names)
-        odds_table = prices.pivot_table(
-            index="bookmaker", columns="Fighter", values="decimal_odds", aggfunc="last"
-        )
-        odds_table = odds_table.reindex(columns=[a.fighter_name, b.fighter_name])
-        odds_table = odds_table.map(lambda value: f"{value:.2f}" if pd.notna(value) else "—")
-        updated = (
-            prices.groupby("bookmaker")["updated_at"]
-            .max()
-            .map(lambda value: components.fmt_date(value, with_time=True))
-        )
-        odds_table["Bookmaker update (UTC)"] = updated
-        st.dataframe(
-            odds_table.rename_axis("Bookmaker").reset_index(), hide_index=True, width="stretch"
-        )
-        st.caption(
-            f"The Odds API · Australian bookmakers · last fetched {components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC. Odds may have changed since the last daily refresh."
-        )
-        view = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
-        if view is not None and not math.isnan(num(a.self_p_win)):
-            st.markdown("**Model vs bookmakers**")
-            st.dataframe(
-                explain.edge_display(
-                    explain.edge_table(
-                        [str(a.fighter_name), str(b.fighter_name)],
-                        [num(a.self_p_win), num(b.self_p_win)],
-                        view["market_p"].tolist(),
-                        view["best_odds"].tolist(),
-                    ).assign(**{"Best price at": view["best_book"].tolist()})
-                ),
-                hide_index=True,
-                width="stretch",
-                column_config=explain.EDGE_COLUMNS,
-            )
-            st.caption(
-                f"Bookmakers' chance is the median across {int(view['books'].iloc[0])} bookmakers "
-                "with their margin removed; prices whose margins look stale or broken are left "
-                "out. " + explain.EDGE_NOTE
-            )
-has_history_table = not data.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
-    ["upcoming_odds_history"],
-).empty
-history = (
-    data.query(
-        """SELECT fighter_id, fetched_at, median(decimal_odds) AS median_odds,
-                  min(decimal_odds) AS low, max(decimal_odds) AS high,
-                  count(*) AS books
-           FROM upcoming_odds_history WHERE bout_id = ?
-           GROUP BY fighter_id, fetched_at ORDER BY fetched_at""",
-        [bout_id],
-    )
-    if has_history_table
-    else pd.DataFrame()
-)
-if not history.empty:
-    st.markdown("**Betting line movement**")
-    order = [str(a.fighter_name), str(b.fighter_name)]
-    history["Fighter"] = history["fighter_id"].map({a.fighter_id: order[0], b.fighter_id: order[1]})
-    history["implied"] = 1 / history["median_odds"]
-    color = alt.Color(
-        "Fighter:N",
-        scale=alt.Scale(domain=order, range=["#3987e5", "#d95926"]),
-        legend=alt.Legend(orient="top", title=None, symbolType="circle", symbolOpacity=1),
-    )
-    x = alt.X(
-        "fetched_at:T", title="Price fetched (UTC)", axis=alt.Axis(format="%-d %b", tickCount="day")
-    )
-    tooltip = [
-        alt.Tooltip("Fighter:N"),
-        alt.Tooltip("fetched_at:T", title="Fetched", format="%-d %b %Y %H:%M"),
-        alt.Tooltip("median_odds:Q", title="Median odds", format=".2f"),
-        alt.Tooltip("low:Q", title="Lowest", format=".2f"),
-        alt.Tooltip("high:Q", title="Highest", format=".2f"),
-        alt.Tooltip("implied:Q", title="Implied chance", format=".0%"),
-        alt.Tooltip("books:Q", title="Bookmakers"),
-    ]
-    base = alt.Chart(history).encode(x=x, color=color)
-    band = base.mark_area(opacity=0.18).encode(
-        y=alt.Y("low:Q", title="Decimal odds", scale=alt.Scale(zero=False)), y2="high:Q"
-    )
-    line = base.mark_line(strokeWidth=2).encode(y="median_odds:Q")
-    points = base.mark_point(filled=True, size=70).encode(y="median_odds:Q", tooltip=tooltip)
-    st.altair_chart((band + line + points).properties(height=280), width="stretch")
-    polls = history["fetched_at"].nunique()
-    st.caption(
-        "Median price across bookmakers at each daily fetch; the shaded band spans the lowest "
-        "to highest price. Shorter odds mean the market rates that fighter more likely to win."
-        + (" Movement appears as more daily fetches are recorded." if polls < 2 else "")
-    )
-
-if a.status == "scheduled":
-    st.link_button(
-        "Refresh odds via GitHub",
-        "https://github.com/kevinofsydney/fight-analyser/actions/workflows/refresh.yml",
-        help="Open the Daily refresh workflow and select Run workflow. Odds are fetched at most once per UTC day.",
-    )
-    st.caption(
-        "Run the Daily refresh workflow on GitHub to request an update; the daily odds limit still applies."
-    )
+# --- Prediction ---
 
 # --- Win and method probabilities ---------------------------------------------------------
 div = a.division
@@ -539,7 +248,7 @@ base = data.query(
     [div],
 ).iloc[0]
 
-st.subheader("Model outlook")
+st.subheader("Prediction")
 # Low / medium / high labels only for methods whose probabilities pass the calibration check
 # (FR-31), each method judged on its own.
 levels_ok = data.method_labels_calibrated()
@@ -588,9 +297,422 @@ if not math.isnan(pd_):
         f"Chance the fight goes the distance: {pd_:.0%} (division average {num(base['dist']):.0%})."
     )
 
+if a.status == "completed":
+    st.markdown("**Prediction vs result**")
+    predicted, happened = st.columns(2)
+    outcomes = explain.likely_outcomes(a, b)
+    with predicted:
+        st.markdown("**Model before the fight**")
+        if outcomes is None:
+            st.caption("No model prediction for this bout: the backtest starts in 2012.")
+        else:
+            fav, fav_p = (
+                (a, num(a.self_p_win)) if num(a.self_p_win) >= 0.5 else (b, num(b.self_p_win))
+            )
+            st.markdown(f"Favourite: **{fav.fighter_name}**, {fav_p:.0%} to win")
+            top = outcomes.iloc[0]
+            st.markdown(f"Most likely ending: **{top['label']}** ({top['p']:.0%})")
+            market = num(a.self_implied_prob)
+            if not math.isnan(market):
+                mfav = a if market >= 0.5 else b
+                st.caption(
+                    f"Bookmakers' closing favourite: {mfav.fighter_name} "
+                    f"({max(market, 1 - market):.0%})."
+                )
+    with happened:
+        st.markdown("**What happened**")
+        st.markdown(explain.result_text(a, b))
+        if outcomes is not None and (num(a.won) == 1 or num(b.won) == 1):
+            winner = a if num(a.won) == 1 else b
+            winner_p = num(winner.self_p_win)
+            if winner_p >= 0.5:
+                st.success(f"The model picked the winner ({winner_p:.0%}).")
+            else:
+                st.error(
+                    f"Upset by the model's numbers: it gave {winner.fighter_name} {winner_p:.0%}."
+                )
+            actual = explain.actual_outcome(a, b)
+            if actual is not None:
+                rank = int(outcomes.index[outcomes["key"] == actual][0]) + 1
+                st.caption(
+                    f"The actual ending was the model's #{rank} of 6 most likely "
+                    f"({float(outcomes.loc[outcomes['key'] == actual, 'p'].iloc[0]):.0%})."
+                )
+
+
+# --- Betting ---
+
+# --- Market odds ---------------------------------------------------------------------------
+st.subheader("Betting")
+st.markdown("**Odds**")
+if a.status == "completed":
+    odds_rows = []
+    for side in (a, b):
+        price = closing.loc[side.fighter_id] if side.fighter_id in closing.index else None
+        values = (
+            sorted({int(x) for x in price[["close_low", "close_high"]].dropna() if x != 0})
+            if price is not None
+            else []
+        )
+        decimal = [components.decimal_odds_from_american(v) for v in values]
+        odds_rows.append(
+            {
+                "Fighter": side.fighter_name,
+                "Closing price (decimal)": " – ".join(f"{d:.2f}" for d in decimal) or "—",
+                "American": " to ".join(components.format_american_odds(v) for v in values) or "—",
+            }
+        )
+    st.dataframe(pd.DataFrame(odds_rows), hide_index=True, width="stretch")
+    st.caption("Closing price range across bookmakers (fight-canon-db).")
+    best = [
+        components.decimal_odds_from_american(
+            max(closing.loc[s.fighter_id, ["close_low", "close_high"]].dropna(), default=None)
+        )
+        if s.fighter_id in closing.index
+        else None
+        for s in (a, b)
+    ]
+    market = [num(a.self_implied_prob), num(b.self_implied_prob)]
+    if not any(math.isnan(m) for m in market) and not math.isnan(num(a.self_p_win)):
+        st.markdown("**Model vs bookmakers (closing)**")
+        st.dataframe(
+            explain.edge_display(
+                explain.edge_table(
+                    [str(a.fighter_name), str(b.fighter_name)],
+                    [num(a.self_p_win), num(b.self_p_win)],
+                    market,
+                    [math.nan if o is None else o for o in best],
+                )
+            ),
+            hide_index=True,
+            width="stretch",
+            column_config=explain.EDGE_COLUMNS,
+        )
+        st.caption(explain.EDGE_NOTE)
+else:
+    if prices.empty:
+        st.caption("No upcoming bookmaker odds are available for this fight yet.")
+    else:
+        names = {a.fighter_id: a.fighter_name, b.fighter_id: b.fighter_name}
+        prices["Fighter"] = prices["fighter_id"].map(names)
+        odds_table = prices.pivot_table(
+            index="bookmaker", columns="Fighter", values="decimal_odds", aggfunc="last"
+        )
+        odds_table = odds_table.reindex(columns=[a.fighter_name, b.fighter_name])
+        odds_table = odds_table.map(lambda value: f"{value:.2f}" if pd.notna(value) else "—")
+        updated = (
+            prices.groupby("bookmaker")["updated_at"]
+            .max()
+            .map(lambda value: components.fmt_date(value, with_time=True))
+        )
+        odds_table["Bookmaker update (UTC)"] = updated
+        st.dataframe(
+            odds_table.rename_axis("Bookmaker").reset_index(), hide_index=True, width="stretch"
+        )
+        st.caption(
+            "Australian bookmakers via The Odds API, fetched "
+            f"{components.fmt_date(prices['fetched_at'].max(), with_time=True)} UTC."
+        )
+        view = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
+        if view is not None and not math.isnan(num(a.self_p_win)):
+            st.markdown("**Model vs bookmakers**")
+            st.dataframe(
+                explain.edge_display(
+                    explain.edge_table(
+                        [str(a.fighter_name), str(b.fighter_name)],
+                        [num(a.self_p_win), num(b.self_p_win)],
+                        view["market_p"].tolist(),
+                        view["best_odds"].tolist(),
+                    ).assign(**{"Best price at": view["best_book"].tolist()})
+                ),
+                hide_index=True,
+                width="stretch",
+                column_config=explain.EDGE_COLUMNS,
+            )
+            st.caption(
+                f"Bookmakers' chance: median of {int(view['books'].iloc[0])} bookmakers, margin "
+                "removed. " + explain.EDGE_NOTE
+            )
+has_history_table = not data.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_name = ?",
+    ["upcoming_odds_history"],
+).empty
+history = (
+    data.query(
+        """SELECT fighter_id, fetched_at, median(decimal_odds) AS median_odds,
+                  min(decimal_odds) AS low, max(decimal_odds) AS high,
+                  count(*) AS books
+           FROM upcoming_odds_history WHERE bout_id = ?
+           GROUP BY fighter_id, fetched_at ORDER BY fetched_at""",
+        [bout_id],
+    )
+    if has_history_table
+    else pd.DataFrame()
+)
+if not history.empty:
+    st.markdown("**Betting line movement**")
+    order = [str(a.fighter_name), str(b.fighter_name)]
+    history["Fighter"] = history["fighter_id"].map({a.fighter_id: order[0], b.fighter_id: order[1]})
+    history["implied"] = 1 / history["median_odds"]
+    color = alt.Color(
+        "Fighter:N",
+        scale=alt.Scale(domain=order, range=["#3987e5", "#d95926"]),
+        legend=alt.Legend(orient="top", title=None, symbolType="circle", symbolOpacity=1),
+    )
+    x = alt.X(
+        "fetched_at:T", title="Price fetched (UTC)", axis=alt.Axis(format="%-d %b", tickCount="day")
+    )
+    tooltip = [
+        alt.Tooltip("Fighter:N"),
+        alt.Tooltip("fetched_at:T", title="Fetched", format="%-d %b %Y %H:%M"),
+        alt.Tooltip("median_odds:Q", title="Median odds", format=".2f"),
+        alt.Tooltip("low:Q", title="Lowest", format=".2f"),
+        alt.Tooltip("high:Q", title="Highest", format=".2f"),
+        alt.Tooltip("implied:Q", title="Implied chance", format=".0%"),
+        alt.Tooltip("books:Q", title="Bookmakers"),
+    ]
+    base = alt.Chart(history).encode(x=x, color=color)
+    band = base.mark_area(opacity=0.18).encode(
+        y=alt.Y("low:Q", title="Decimal odds", scale=alt.Scale(zero=False)), y2="high:Q"
+    )
+    line = base.mark_line(strokeWidth=2).encode(y="median_odds:Q")
+    points = base.mark_point(filled=True, size=70).encode(y="median_odds:Q", tooltip=tooltip)
+    st.altair_chart((band + line + points).properties(height=280), width="stretch")
+    polls = history["fetched_at"].nunique()
+    st.caption(
+        "Median price at each daily fetch; the band spans the lowest to highest price."
+        + (" Movement appears as more fetches are recorded." if polls < 2 else "")
+    )
+
+if a.status == "scheduled":
+    st.link_button(
+        "Refresh odds via GitHub",
+        "https://github.com/kevinofsydney/fight-analyser/actions/workflows/refresh.yml",
+        help="Open the Daily refresh workflow and select Run workflow. Odds are fetched at most once per UTC day.",
+    )
+
+# --- Matchup projections -------------------------------------------------------------------
+# --- Bet suggestions --------------------------------------------------------------------------
+st.markdown("**Suggested bets**")
+if a.status != "scheduled":
+    st.caption("Suggestions are for upcoming bouts only.")
+else:
+    unit = st.number_input(
+        "1 unit ($)", min_value=1, max_value=10_000, value=50, step=5, key="bet_unit"
+    )
+    feed_odds: dict[str, float] = {}
+    if not prices.empty:
+        mv = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
+        if mv is not None:
+            feed_odds = {
+                str(a.fighter_name): float(mv.loc[str(a.fighter_id), "best_odds"]),
+                str(b.fighter_name): float(mv.loc[str(b.fighter_id), "best_odds"]),
+            }
+    picks = bet_recs.selections(a, b)
+    grid = pd.DataFrame(
+        {
+            "Market": [x.market for x in picks],
+            "Selection": [x.selection for x in picks],
+            "Model chance": [100 * x.p for x in picks],
+            "Fair odds": [1 / x.p if x.p > 0 else math.nan for x in picks],
+            "Odds": [
+                feed_odds.get(x.selection, math.nan) if x.market == "Moneyline" else math.nan
+                for x in picks
+            ],
+        }
+    )
+    st.caption("Moneyline prices come from the feed. For props, type the odds you're offered.")
+    edited = st.data_editor(
+        grid,
+        hide_index=True,
+        width="stretch",
+        disabled=["Market", "Selection", "Model chance", "Fair odds"],
+        key=f"bet_odds_{bout_id}",
+        column_config={
+            "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
+            "Fair odds": st.column_config.NumberColumn(
+                format="%.2f", help="1 ÷ model chance: the price at which a bet breaks even."
+            ),
+            "Odds": st.column_config.NumberColumn(
+                "Odds (decimal)", min_value=1.01, max_value=1000.0, format="%.2f"
+            ),
+        },
+    )
+    rows = []
+    for x, odds in zip(picks, edited["Odds"], strict=True):
+        ok = True if x.method is None else bool(levels_ok.get(x.method, False))
+        units, why = bet_recs.recommend(x.p, float(odds) if pd.notna(odds) else math.nan, ok)
+        rows.append(
+            {
+                "Market": x.market,
+                "Selection": x.selection,
+                "Odds": "No odds found" if pd.isna(odds) else f"{float(odds):.2f}",
+                "Stake": f"{units:g} units (${units * unit:,.2f})" if units else "—",
+                "Why": why,
+            }
+        )
+    recs = pd.DataFrame(rows)
+    bets = recs[recs["Stake"] != "—"]
+    if bets.empty:
+        st.info("No bet: none of the priced markets clears the minimum edge.")
+    else:
+        for _, r in bets.iterrows():
+            st.success(f"**{r['Selection']}** ({r['Market']}) at {r['Odds']}: {r['Stake']}")
+    with st.expander("Every market"):
+        st.dataframe(recs, hide_index=True, width="stretch")
+    st.caption(
+        f"Suggested when the expected return is at least {bet_recs.MIN_EDGE:.0%}. Stakes are "
+        f"quarter Kelly on {bet_recs.BANKROLL_UNITS:.0f} units, at most "
+        f"{bet_recs.MAX_UNITS:g}. No round bets: the model doesn't predict the round."
+    )
+
+
+# --- Expected fight stats ---
+
+st.subheader("Expected fight stats")
+rounds_scheduled = int(num(a.scheduled_rounds)) if not math.isnan(num(a.scheduled_rounds)) else 3
+finish_secs = data.query(
+    """SELECT avg(fight_seconds) AS s FROM bouts
+       WHERE status = 'completed' AND method_group IN ('ko_tko', 'sub')
+         AND scheduled_rounds = ? AND fight_seconds > 0""",
+    [rounds_scheduled],
+)["s"].iloc[0]
+p_dist = num(a.self_p_distance)
+exp_rounds = fight_projection.expected_rounds(p_dist, rounds_scheduled, num(finish_secs))
+full_distance = st.toggle(
+    f"Assume it goes the full {rounds_scheduled} rounds",
+    value=False,
+    help="Each total is the per-round projection (each fighter's rates against what this "
+    "opponent allows) times the rounds. Off: the fight's expected length, allowing for a "
+    "finish. On: a fight that goes the distance.",
+)
+used_rounds = float(rounds_scheduled) if full_distance else exp_rounds
+fight_totals = fight_projection.totals(a, b, used_rounds)
+fight_totals[[str(a.fighter_name), str(b.fighter_name)]] = fight_totals[
+    [str(a.fighter_name), str(b.fighter_name)]
+].round(1)
+st.dataframe(
+    fight_totals,
+    hide_index=True,
+    width="stretch",
+    column_config={
+        str(a.fighter_name): st.column_config.NumberColumn(format="%.1f"),
+        str(b.fighter_name): st.column_config.NumberColumn(format="%.1f"),
+    },
+)
+if full_distance:
+    st.caption(f"Over {rounds_scheduled} full rounds ({rounds_scheduled * 5} minutes).")
+else:
+    st.caption(
+        f"Expected fight length {exp_rounds:.1f} rounds ({exp_rounds * 5:.0f} minutes): "
+        f"{p_dist:.0%} chance it goes the full {rounds_scheduled * 5} minutes, otherwise the "
+        f"average finished {rounds_scheduled}-round UFC fight ({num(finish_secs) / 60:.1f} "
+        "minutes)."
+        if not math.isnan(p_dist) and not math.isnan(num(finish_secs))
+        else f"No finish model for this bout, so totals assume {rounds_scheduled} full rounds."
+    )
+
+
+with st.expander("Per round, with the takedown maths"):
+    proj_rows = [
+        ("Takedowns landed", "self_x_td_r", "{:.2f}"),
+        ("Takedown attempts", "self_x_td_att_r", "{:.2f}"),
+        ("Takedown success chance", "self_p_td_success", "{:.0%}"),
+        ("Sig. strikes landed", "self_x_sig_r", "{:.1f}"),
+        ("Sig. strike accuracy", "self_p_sig_land", "{:.0%}"),
+        ("Control time (sec)", "self_x_ctrl_s_r", "{:.0f}"),
+        ("Knockdowns", "self_x_kd_r", "{:.3f}"),
+        ("Submission attempts", "self_x_sub_att_r", "{:.2f}"),
+    ]
+
+    def f(v: object, fmt: str) -> str:
+        x = num(v)
+        return "—" if math.isnan(x) else fmt.format(x)
+
+    proj_table = [
+        {"Projection": lab, a.fighter_name: f(a[k], fm), b.fighter_name: f(b[k], fm)}
+        for lab, k, fm in proj_rows
+    ]
+    # A fighter's projected takedown defence is whatever share of the opponent's attempts fail.
+    proj_table.insert(
+        3,
+        {
+            "Projection": "Takedown defence (vs this opponent)",
+            a.fighter_name: f(1 - num(b.self_p_td_success), "{:.0%}"),
+            b.fighter_name: f(1 - num(a.self_p_td_success), "{:.0%}"),
+        },
+    )
+    proj_table.insert(
+        4,
+        {
+            "Projection": "Takedown defence (career, adjusted)",
+            a.fighter_name: f(a.get("self_td_def_s"), "{:.0%}"),
+            b.fighter_name: f(b.get("self_td_def_s"), "{:.0%}"),
+        },
+    )
+    st.dataframe(pd.DataFrame(proj_table), hide_index=True, width="stretch")
+    st.caption(
+        "Defence vs this opponent: 1 − the opponent's takedown success chance. Career defence "
+        "is pulled towards the division average for short records."
+    )
+    st.markdown("**Takedown maths**")
+    with st.container():
+        snap = data.query("SELECT * FROM fighter_snapshots WHERE bout_id = ?", [bout_id]).set_index(
+            "fighter_id"
+        )
+        for s, o in ((a, b), (b, a)):
+            if s.fighter_id not in snap.index or o.fighter_id not in snap.index:
+                continue
+            sa, so = snap.loc[s.fighter_id], snap.loc[o.fighter_id]
+            base_att = sa["b_td_att_pm"] * 15
+            st.markdown(
+                f"**{s.fighter_name}** attempts {sa['td_att_p15_s']:.2f} TD/15 (adj.); {o.fighter_name}'s opponents attempt "
+                f"{so['opp_td_att_p15_s']:.2f}/15; division average {base_att:.2f}/15 → expected attempts "
+                f"{sa['td_att_p15_s']:.2f} × {so['opp_td_att_p15_s']:.2f} / {base_att:.2f} = {num(s.self_x_td_att_r) * 3:.2f}/15.  \n"
+                f"Success: {s.fighter_name} lands {sa['td_acc_s']:.0%} (adj.), {o.fighter_name} allows {so['td_allowed_s']:.0%}, "
+                f"division average {sa['b_td_acc']:.0%} → odds-ratio combination = **{num(s.self_p_td_success):.0%}** per attempt.  \n"
+                f"Expected takedowns: **{num(s.self_x_td_r):.2f} per round**."
+            )
+
+
+# --- Tale of the tape -----------------------------------------------------------------------
+st.subheader("Side by side before this fight")
+show_adjusted = st.toggle("Include adjusted (shrunk) stats", value=False)
+rows = []
+for stat in STATS:
+    if (stat.group == "Adjusted" and not show_adjusted) or f"self_{stat.key}" not in a.index:
+        continue
+    va, vb = num(a.get(f"self_{stat.key}")), num(b.get(f"self_{stat.key}"))
+    edge = ""
+    if stat.higher_is_better is not None and not (math.isnan(va) or math.isnan(vb)) and va != vb:
+        better_a = (va > vb) == stat.higher_is_better
+        margin = abs(va - vb)
+        m = (
+            components.fmt_diff_cm(margin).split(" / ")[0].lstrip("+")
+            if stat.unit == "cm"
+            else components.fmt_stat(stat.key, margin).lstrip("+")
+        )
+        edge = f"{(a if better_a else b).fighter_name} (+{m})"
+    rows.append(
+        {
+            "Group": stat.group,
+            "Stat": stat.label,
+            a.fighter_name: components.fmt_stat(stat.key, va),
+            b.fighter_name: components.fmt_stat(stat.key, vb),
+            "Edge": edge,
+        }
+    )
+tape = pd.DataFrame(rows)
+st.dataframe(tape, hide_index=True, width="stretch", height=min(38 * (len(tape) + 1), 1400))
+st.caption("Fight wear counts recorded UFC fights only: exposure, not a medical diagnosis.")
+
+
+# --- Why ---
+
+st.subheader("How the model got here")
 model_year = explain.model_year_for(str(a.status), int(a.year))
 win_model = None if math.isnan(num(a.self_p_win)) else explain.load_model(model_year)
-with st.expander("How the model picks the most likely ending", expanded=True):
+with st.expander("How the model picks the most likely ending"):
     explain.render_ending_breakdown(a, b, win_model)
 
 with st.expander("How the model calculated these chances"):
@@ -719,243 +841,97 @@ with st.expander("What goes into the model outlook?"):
         "The method model also considers the individual levels below. It uses the unadjusted versions of certain indices, as labelled."
     )
     input_table(method_keys)
-    st.caption(
-        "Missing inputs are replaced with zero in the model; a dash means no recorded value. "
-        "Method probabilities are scaled to agree with the win probability. "
-        "The closing betting line and division averages are shown for comparison and are not model inputs."
-    )
+    st.caption("A dash means no recorded value; the model treats it as no gap.")
 
-# --- Matchup projections -------------------------------------------------------------------
-# --- Bet suggestions --------------------------------------------------------------------------
-st.subheader("Suggested bets")
-if a.status != "scheduled":
-    st.caption("Suggestions are for upcoming bouts only.")
-else:
-    unit = st.number_input(
-        "1 unit ($)", min_value=1, max_value=10_000, value=50, step=5, key="bet_unit"
-    )
-    feed_odds: dict[str, float] = {}
-    if not prices.empty:
-        mv = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
-        if mv is not None:
-            feed_odds = {
-                str(a.fighter_name): float(mv.loc[str(a.fighter_id), "best_odds"]),
-                str(b.fighter_name): float(mv.loc[str(b.fighter_id), "best_odds"]),
-            }
-    picks = bet_recs.selections(a, b)
-    grid = pd.DataFrame(
-        {
-            "Market": [x.market for x in picks],
-            "Selection": [x.selection for x in picks],
-            "Model chance": [100 * x.p for x in picks],
-            "Fair odds": [1 / x.p if x.p > 0 else math.nan for x in picks],
-            "Odds": [
-                feed_odds.get(x.selection, math.nan) if x.market == "Moneyline" else math.nan
-                for x in picks
-            ],
-        }
-    )
-    st.caption(
-        "Moneyline prices are the best current price from the bookmaker feed. The feed has no "
-        "prop markets, so type the decimal odds you're offered into the Odds column for any prop."
-    )
-    edited = st.data_editor(
-        grid,
-        hide_index=True,
-        width="stretch",
-        disabled=["Market", "Selection", "Model chance", "Fair odds"],
-        key=f"bet_odds_{bout_id}",
-        column_config={
-            "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
-            "Fair odds": st.column_config.NumberColumn(
-                format="%.2f", help="1 ÷ model chance: the price at which a bet breaks even."
-            ),
-            "Odds": st.column_config.NumberColumn(
-                "Odds (decimal)", min_value=1.01, max_value=1000.0, format="%.2f"
-            ),
-        },
-    )
-    rows = []
-    for x, odds in zip(picks, edited["Odds"], strict=True):
-        ok = True if x.method is None else bool(levels_ok.get(x.method, False))
-        units, why = bet_recs.recommend(x.p, float(odds) if pd.notna(odds) else math.nan, ok)
-        rows.append(
-            {
-                "Market": x.market,
-                "Selection": x.selection,
-                "Odds": "No odds found" if pd.isna(odds) else f"{float(odds):.2f}",
-                "Stake": f"{units:g} units (${units * unit:,.2f})" if units else "—",
-                "Why": why,
-            }
+
+ELO_HELP = (
+    f"Every fighter starts at {ratings.ELO_START:.0f}. After each UFC fight, Elo changes by "
+    f"K × (result − expected): result is 1 for a win, 0.5 for a draw and 0 for a loss; "
+    f"expected = 1 / (1 + 10^((opponent Elo − own Elo) / 400)); "
+    f"K = {ratings.ELO_K:.0f}, or {ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or "
+    "submission. No contests don't count. The Elo ratings section below shows each fight."
+)
+RESULT_LABELS = {"W": "Win", "L": "Loss", "D": "Draw", "NC": "No contest"}
+METHOD_LABELS = {"ko_tko": "KO/TKO", "sub": "Submission", "dec": "Decision"}
+
+with st.expander("Elo ratings"):
+    elo_cols = st.columns(2)
+    for col, side in zip(elo_cols, (a, b), strict=True):
+        col.metric(
+            f"{side.fighter_name} · Elo before fight",
+            f"{num(side.self_elo):.0f}" if not math.isnan(num(side.self_elo)) else "—",
+            help=ELO_HELP,
         )
-    recs = pd.DataFrame(rows)
-    bets = recs[recs["Stake"] != "—"]
-    if bets.empty:
-        st.info("No bet: none of the priced markets clears the minimum edge.")
-    else:
-        for _, r in bets.iterrows():
-            st.success(f"**{r['Selection']}** ({r['Market']}) at {r['Odds']}: {r['Stake']}")
-    with st.expander("Every market"):
-        st.dataframe(recs, hide_index=True, width="stretch")
-    st.caption(
-        f"A bet is suggested when the model's chance × the price beats 1 by at least "
-        f"{bet_recs.MIN_EDGE:.0%}. Stakes are quarter Kelly on a "
-        f"{bet_recs.BANKROLL_UNITS:.0f}-unit bankroll, rounded down to a quarter unit and capped "
-        f"at {bet_recs.MAX_UNITS:g} units. Method and distance markets are skipped while their "
-        "calibration check fails. The round of a finish isn't modelled, so there are no round "
-        "bets. In the backtest the closing line beat the model, and edge-sized betting lost "
-        "money in 2026 so far (Model Performance)."
-    )
 
-st.subheader("Expected fight stats")
-rounds_scheduled = int(num(a.scheduled_rounds)) if not math.isnan(num(a.scheduled_rounds)) else 3
-finish_secs = data.query(
-    """SELECT avg(fight_seconds) AS s FROM bouts
-       WHERE status = 'completed' AND method_group IN ('ko_tko', 'sub')
-         AND scheduled_rounds = ? AND fight_seconds > 0""",
-    [rounds_scheduled],
-)["s"].iloc[0]
-p_dist = num(a.self_p_distance)
-exp_rounds = fight_projection.expected_rounds(p_dist, rounds_scheduled, num(finish_secs))
-full_distance = st.toggle(
-    f"Assume it goes the full {rounds_scheduled} rounds",
-    value=False,
-    help="Off: totals are scaled to the fight's expected length, allowing for the chance of a "
-    "finish. On: totals for a fight that goes the distance.",
-)
-used_rounds = float(rounds_scheduled) if full_distance else exp_rounds
-fight_totals = fight_projection.totals(a, b, used_rounds)
-fight_totals[[str(a.fighter_name), str(b.fighter_name)]] = fight_totals[
-    [str(a.fighter_name), str(b.fighter_name)]
-].round(1)
-st.dataframe(
-    fight_totals,
-    hide_index=True,
-    width="stretch",
-    column_config={
-        str(a.fighter_name): st.column_config.NumberColumn(format="%.1f"),
-        str(b.fighter_name): st.column_config.NumberColumn(format="%.1f"),
-    },
-)
-if full_distance:
-    st.caption(f"Over {rounds_scheduled} full rounds ({rounds_scheduled * 5} minutes).")
-else:
-    st.caption(
-        f"Expected fight length {exp_rounds:.1f} rounds ({exp_rounds * 5:.0f} minutes): "
-        f"{p_dist:.0%} chance it goes the full {rounds_scheduled * 5} minutes, otherwise the "
-        f"average finished {rounds_scheduled}-round UFC fight ({num(finish_secs) / 60:.1f} "
-        "minutes)."
-        if not math.isnan(p_dist) and not math.isnan(num(finish_secs))
-        else f"No finish model for this bout, so totals assume {rounds_scheduled} full rounds."
-    )
-st.caption(
-    "Each number is the per-round projection below (each fighter's rates, adjusted for what "
-    "this opponent allows) times the rounds. Takedowns defended are the opponent's expected "
-    "attempts that fail. These are averages: a fight that ends early has fewer of everything."
-)
-
-st.subheader("Projected per round")
-proj_rows = [
-    ("Takedowns landed", "self_x_td_r", "{:.2f}"),
-    ("Takedown attempts", "self_x_td_att_r", "{:.2f}"),
-    ("Takedown success chance", "self_p_td_success", "{:.0%}"),
-    ("Sig. strikes landed", "self_x_sig_r", "{:.1f}"),
-    ("Sig. strike accuracy", "self_p_sig_land", "{:.0%}"),
-    ("Control time (sec)", "self_x_ctrl_s_r", "{:.0f}"),
-    ("Knockdowns", "self_x_kd_r", "{:.3f}"),
-    ("Submission attempts", "self_x_sub_att_r", "{:.2f}"),
-]
-
-
-def f(v: object, fmt: str) -> str:
-    x = num(v)
-    return "—" if math.isnan(x) else fmt.format(x)
-
-
-proj_table = [
-    {"Projection": lab, a.fighter_name: f(a[k], fm), b.fighter_name: f(b[k], fm)}
-    for lab, k, fm in proj_rows
-]
-# A fighter's projected takedown defence is whatever share of the opponent's attempts fail.
-proj_table.insert(
-    3,
-    {
-        "Projection": "Takedown defence (vs this opponent)",
-        a.fighter_name: f(1 - num(b.self_p_td_success), "{:.0%}"),
-        b.fighter_name: f(1 - num(a.self_p_td_success), "{:.0%}"),
-    },
-)
-proj_table.insert(
-    4,
-    {
-        "Projection": "Takedown defence (career, adjusted)",
-        a.fighter_name: f(a.get("self_td_def_s"), "{:.0%}"),
-        b.fighter_name: f(b.get("self_td_def_s"), "{:.0%}"),
-    },
-)
-st.dataframe(pd.DataFrame(proj_table), hide_index=True, width="stretch")
-st.caption(
-    "Takedown defence vs this opponent is 1 − the opponent's projected takedown success chance. "
-    "Career defence is the share of opponents' takedown attempts stopped, adjusted towards the "
-    "division average when there is little UFC data."
-)
-with st.expander("Show the maths (takedowns)"):
-    snap = data.query("SELECT * FROM fighter_snapshots WHERE bout_id = ?", [bout_id]).set_index(
-        "fighter_id"
-    )
-    for s, o in ((a, b), (b, a)):
-        if s.fighter_id not in snap.index or o.fighter_id not in snap.index:
-            continue
-        sa, so = snap.loc[s.fighter_id], snap.loc[o.fighter_id]
-        base_att = sa["b_td_att_pm"] * 15
+    with st.container():
         st.markdown(
-            f"**{s.fighter_name}** attempts {sa['td_att_p15_s']:.2f} TD/15 (adj.); {o.fighter_name}'s opponents attempt "
-            f"{so['opp_td_att_p15_s']:.2f}/15; division average {base_att:.2f}/15 → expected attempts "
-            f"{sa['td_att_p15_s']:.2f} × {so['opp_td_att_p15_s']:.2f} / {base_att:.2f} = {num(s.self_x_td_att_r) * 3:.2f}/15.  \n"
-            f"Success: {s.fighter_name} lands {sa['td_acc_s']:.0%} (adj.), {o.fighter_name} allows {so['td_allowed_s']:.0%}, "
-            f"division average {sa['b_td_acc']:.0%} → odds-ratio combination = **{num(s.self_p_td_success):.0%}** per attempt.  \n"
-            f"Expected takedowns: **{num(s.self_x_td_r):.2f} per round**."
+            f"Each fighter starts at **{ratings.ELO_START:.0f}**. After every UFC fight the rating "
+            "moves by **K × (result − expected)**:\n"
+            "- **result**: 1 for a win, 0.5 for a draw, 0 for a loss (no contests don't count)\n"
+            "- **expected**: the chance of winning implied by the two ratings, "
+            "1 / (1 + 10^((opponent − own) / 400)); a 100-point edge means about 64%\n"
+            f"- **K**: {ratings.ELO_K:.0f} for a decision, "
+            f"{ratings.ELO_K * ratings.FINISH_MULT:.0f} for a KO/TKO or submission\n\n"
+            "Beating a higher-rated opponent earns more than beating a lower-rated one, and the "
+            "opponent loses what the winner gains. Fights on the same day use ratings from before "
+            "that day. Only fights before this bout count."
         )
+        for side in (a, b):
+            history = data.query(
+                """SELECT bout_id, event_date, opp_id, opp_name, self_elo, opp_elo, result,
+                          method_group
+                   FROM bout_sides
+                   WHERE fighter_id = ? AND status = 'completed' AND event_date < ?""",
+                [side.fighter_id, side.event_date],
+            )
+            steps = ratings.elo_breakdown(history)
+            components.fighter_link(side.fighter_name, side.fighter_id)
+            if steps.empty:
+                st.caption(
+                    f"No earlier UFC fights, so the rating is the {ratings.ELO_START:.0f} starting value."
+                )
+                continue
+            # elo_breakdown keeps this order, so the IDs line up row for row.
+            ordered = history.sort_values(["event_date", "bout_id"]).reset_index(drop=True)
+            components.nav_table(
+                pd.DataFrame(
+                    {
+                        "Date": steps["event_date"].map(components.fmt_date),
+                        "Opponent": steps["opp_name"],
+                        "Elo before": steps["self_elo"].round(0),
+                        "Opponent Elo": steps["opp_elo"].round(0),
+                        "Expected win": (100 * steps["expected"]).round(0).astype(int).astype(str)
+                        + "%",
+                        "Result": steps["result"].map(lambda r: RESULT_LABELS.get(r, r or "—")),
+                        "Method": steps["method_group"].map(
+                            lambda m: METHOD_LABELS.get(m, m or "—")
+                        ),
+                        "K": steps["k"],
+                        "Change": steps["change"].round(1),
+                        "Elo after": steps["elo_after"].round(0),
+                    }
+                ),
+                key=f"elo_steps_{side.fighter_id}",
+                fighter_ids={"Opponent": ordered["opp_id"]},
+                bout_ids=ordered["bout_id"],
+                column_config={
+                    "Change": st.column_config.NumberColumn(format="%+.1f"),
+                    "Elo before": st.column_config.NumberColumn(format="%.0f"),
+                    "Opponent Elo": st.column_config.NumberColumn(format="%.0f"),
+                    "Elo after": st.column_config.NumberColumn(format="%.0f"),
+                    "K": st.column_config.NumberColumn(format="%.0f"),
+                },
+            )
+            st.caption(
+                f"{ratings.ELO_START:.0f} {steps['change'].sum():+.1f} over {len(steps)} fights "
+                f"= {num(side.self_elo):.0f} before this bout."
+            )
 
-# --- Tale of the tape -----------------------------------------------------------------------
-st.subheader("Side by side (before this fight)")
-show_adjusted = st.toggle("Include adjusted (shrunk) stats", value=False)
-rows = []
-for stat in STATS:
-    if (stat.group == "Adjusted" and not show_adjusted) or f"self_{stat.key}" not in a.index:
-        continue
-    va, vb = num(a.get(f"self_{stat.key}")), num(b.get(f"self_{stat.key}"))
-    edge = ""
-    if stat.higher_is_better is not None and not (math.isnan(va) or math.isnan(vb)) and va != vb:
-        better_a = (va > vb) == stat.higher_is_better
-        margin = abs(va - vb)
-        m = (
-            components.fmt_diff_cm(margin).split(" / ")[0].lstrip("+")
-            if stat.unit == "cm"
-            else components.fmt_stat(stat.key, margin).lstrip("+")
-        )
-        edge = f"{(a if better_a else b).fighter_name} (+{m})"
-    rows.append(
-        {
-            "Group": stat.group,
-            "Stat": stat.label,
-            a.fighter_name: components.fmt_stat(stat.key, va),
-            b.fighter_name: components.fmt_stat(stat.key, vb),
-            "Edge": edge,
-        }
-    )
-tape = pd.DataFrame(rows)
-st.dataframe(tape, hide_index=True, width="stretch", height=min(38 * (len(tape) + 1), 1400))
-st.caption(
-    f"Reach difference: {a.fighter_name} {components.fmt_diff_cm(num(a.diff_reach_cm))}. Stances: {a.self_stance or '?'} vs {b.self_stance or '?'}."
-)
-
-st.caption(
-    "Fight-wear totals count recorded UFC fights only. Missing round statistics make totals unavailable; strikes absorbed are exposure, not a medical diagnosis."
-)
+# --- Context ---
 
 # --- Matching hypotheses ---------------------------------------------------------------------
-st.subheader("Saved hypotheses that apply")
+st.subheader("Context")
+st.markdown("**Saved hypotheses that apply**")
 hyp_rows: list[dict[str, object]] = []
 hyp_ids: list[object] = []
 con = data.connect()
@@ -1010,16 +986,14 @@ if hyp_rows:
             f"- **{r['Pattern']}** ({r['Applies to']}): {r['So what']}" for _, r in hyp.iterrows()
         )
     )
-    st.caption(
-        "Fight-wear patterns are kept out of the model on purpose. Click a name to open that "
-        "fighter."
-    )
+    st.caption("Fight-wear patterns are kept out of the model on purpose.")
 else:
     st.caption(
         "None of the saved hypotheses' conditions hold for this bout."
         if a.status == "scheduled"
         else "Shown for upcoming bouts only."
     )
+
 
 # --- Common opponents ------------------------------------------------------------------------
 common = data.query(
@@ -1043,7 +1017,7 @@ common = data.query(
     ],
 )
 if not common.empty:
-    st.subheader("Common opponents")
+    st.markdown("**Common opponents**")
     components.nav_table(
         components.format_dates(
             common.drop(columns=["bout_id", "opp_id", "fighter_id"]), dates=("event_date",)
@@ -1052,5 +1026,23 @@ if not common.empty:
         fighter_ids={"opponent": common["opp_id"], "fighter": common["fighter_id"]},
         bout_ids=common["bout_id"],
     )
+
+
+if a.status == "completed":
+    fight_stats = data.query(
+        """SELECT r.round AS "Round", f.name AS "Fighter", r.kd AS "Knockdowns",
+                  r.sig_l AS "Sig. strikes landed", r.sig_a AS "Sig. strikes attempted",
+                  r.tot_l AS "Total strikes landed", r.tot_a AS "Total strikes attempted",
+                  r.td_l AS "Takedowns landed", r.td_a AS "Takedowns attempted",
+                  r.sub_att AS "Submission attempts", r.rev AS "Reversals", r.ctrl_s AS "Control seconds"
+           FROM round_stats r JOIN fighters f USING (fighter_id)
+           WHERE r.bout_id = ? ORDER BY r.round, f.name""",
+        [bout_id],
+    )
+    st.markdown("**Fight statistics by round**")
+    if fight_stats.empty:
+        st.caption("Round statistics are not available for this fight.")
+    else:
+        st.dataframe(fight_stats, hide_index=True, width="stretch")
 
 components.footer(betting=True)

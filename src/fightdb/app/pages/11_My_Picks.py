@@ -22,9 +22,8 @@ from fightdb.sources.identity import is_placeholder
 components.page("My Picks")
 st.title("My Picks")
 st.caption(
-    "Pick a winner and say how sure you are before each card. Once the results are in, your "
-    "picks are scored against the model and the bookmakers on the same fights. Picks lock when "
-    "the event date has passed."
+    "Pick a winner and how sure you are before each card; results are scored against the model "
+    "and the bookmakers. Picks lock once the event date passes."
 )
 
 settings = get_settings()
@@ -191,7 +190,7 @@ else:
                 "Keep going before drawing a conclusion."
             )
     st.dataframe(
-        summary.rename(
+        components.as_pct(summary, ("accuracy",)).rename(
             columns={
                 "who": "Who",
                 "on": "Scored on",
@@ -205,7 +204,7 @@ else:
         width="stretch",
         column_config={
             "Picks": st.column_config.NumberColumn(format="%d"),
-            "Picked the winner": st.column_config.NumberColumn(format="percent"),
+            "Picked the winner": components.pct_column(),
             "Log loss": st.column_config.NumberColumn(
                 format="%.3f",
                 help="Rewards being confident and right, punishes being confident and wrong. "
@@ -237,9 +236,9 @@ components.nav_table(
             "Fighter": scored["fighter_a_name"],
             "Opponent": scored["fighter_b_name"],
             "My pick": scored["pick_name"],
-            "My %": scored["p_pick"],
-            "Model % for my pick": scored["model_p"],
-            "Bookmakers % for my pick": scored["market_p"],
+            "My %": 100 * scored["p_pick"],
+            "Model % for my pick": 100 * scored["model_p"],
+            "Bookmakers % for my pick": 100 * scored["market_p"],
             "Result": scored["outcome"].map(OUTCOMES),
             "Method": scored["method"].fillna("—"),
         }
@@ -251,7 +250,7 @@ components.nav_table(
         "My pick": scored["pick_id"],
     },
     column_config={
-        c: st.column_config.NumberColumn(format="percent")
+        c: components.pct_column()
         for c in ("My %", "Model % for my pick", "Bookmakers % for my pick")
     },
 )

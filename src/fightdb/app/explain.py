@@ -125,7 +125,9 @@ def render_win_breakdown(
             width="stretch",
         )
     st.dataframe(
-        table.drop(columns="_abs"),
+        table.drop(columns="_abs").assign(
+            **{f"{self_name} win % on this alone": 100 * table[f"{self_name} win % on this alone"]}
+        ),
         hide_index=True,
         width="stretch",
         column_config={
@@ -138,7 +140,7 @@ def render_win_breakdown(
                 format="%+.2f", help="Weight × gap ÷ typical gap. The pushes add up to the total."
             ),
             f"{self_name} win % on this alone": st.column_config.NumberColumn(
-                format="percent", help="The win chance if this were the only factor."
+                format="%.0f%%", help="The win chance if this were the only factor."
             ),
             "Typical gap": st.column_config.TextColumn(
                 help="How far apart UFC opponents usually are on this factor (one standard "
@@ -232,9 +234,8 @@ EDGE_COLUMNS = {
 
 
 EDGE_NOTE = (
-    "In the backtest the bookmakers' closing lines have been more accurate than this model (see "
-    "Model performance), so a large edge more often means the model is missing something than "
-    "that the price is wrong."
+    "The bookmakers have been more accurate than this model, so a big edge often means the "
+    "model is missing something."
 )
 METHOD_NAMES = {"ko": "KO/TKO", "sub": "submission", "dec": "decision"}
 _METHOD_GROUP_KEY = {"ko_tko": "ko", "sub": "sub", "dec": "dec"}

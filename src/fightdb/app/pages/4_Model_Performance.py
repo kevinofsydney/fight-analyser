@@ -21,8 +21,8 @@ from fightdb.models import outcome
 components.page("Model Performance")
 st.title("Model Performance")
 st.caption(
-    "Every number here is out of sample: each fight from 2012 on was scored by a model trained "
-    "only on fights from earlier years, the same way upcoming fights are scored now."
+    "Every number is out of sample: each fight from 2012 on was scored by a model trained only "
+    "on earlier years."
 )
 COLORS = explain.SIDE_COLORS
 
@@ -52,31 +52,25 @@ has_market = fights["market"].notna().to_numpy()
 m = fights.loc[has_market, "market"].to_numpy(dtype=float)
 market_right = (m > 0.5) == (y[has_market] == 1)
 
-st.subheader("Headline")
-c = st.columns(4)
+c = st.columns(3)
 c[0].metric(
-    "Fights scored", f"{len(fights):,}", help=f"{fights['year'].min()}–{fights['year'].max()}"
+    "Model picked the winner",
+    f"{model_right.mean():.1%}",
+    help=f"{len(fights):,} fights, {fights['year'].min()}–{fights['year'].max()}.",
 )
-c[1].metric("Model picked the winner", f"{model_right.mean():.1%}")
-c[2].metric(
-    "Bookmakers picked the winner",
+c[1].metric(
+    "Bookmakers' favourite won",
     f"{market_right.mean():.1%}" if has_market.any() else "—",
-    help="Closing-line favourite, on the fights that have closing odds.",
+    help=f"Closing-line favourite, on the {has_market.sum():,} fights with closing odds.",
 )
-c[3].metric(
-    "Brier score",
-    f"{brier:.3f}",
-    help="Average squared gap between the predicted chance and what happened (1 or 0). "
-    "Lower is better; always saying 50% scores 0.250.",
+c[2].metric(
+    "Brier score, model vs bookmakers",
+    f"{np.mean((p[has_market] - y[has_market]) ** 2):.3f} vs {np.mean((m - y[has_market]) ** 2):.3f}"
+    if has_market.any()
+    else f"{brier:.3f}",
+    help="Average squared gap between the predicted chance and what happened, on fights with "
+    "closing odds. Lower is better; always saying 50% scores 0.250.",
 )
-if has_market.any():
-    st.caption(
-        f"On the {has_market.sum():,} fights with closing odds the model picked "
-        f"{model_right[has_market].mean():.1%} of winners and the bookmakers "
-        f"{market_right.mean():.1%}; Brier {np.mean((p[has_market] - y[has_market]) ** 2):.3f} "
-        f"for the model vs {np.mean((m - y[has_market]) ** 2):.3f} for the bookmakers. "
-        "The market is the stronger predictor."
-    )
 
 by_year = (
     pd.DataFrame({"year": fights["year"], "Model": model_right})
@@ -124,11 +118,10 @@ st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
 components.page_link(st, "pages/12_Previous_Cards.py", "Every earlier card")
 
 st.subheader("Betting the model")
-st.markdown(
-    "Two ways of betting the model on every past fight with a price: **$100 on every pick** "
-    "(whoever the model favours, however small its lead), and **sized by edge** (only where "
-    "the model rates a fighter above the bookmakers' price, staking more the bigger that gap; "
-    "set the bankroll and Kelly fraction above). Draws and no contests refund the stake."
+st.caption(
+    "$100 on every pick backs whoever the model favours. Sized by edge bets only where the "
+    "model rates a fighter above the price, more when the gap is bigger (bankroll and Kelly "
+    "fraction above). Draws and no contests refund."
 )
 bets["year"] = pd.to_datetime(bets["event_date"]).dt.year
 periods = {
@@ -271,10 +264,10 @@ conf["Model's favourite had"] = conf["Model's favourite had"].map(
     lambda i: f"{i.left:.0%}–{i.right:.0%}"
 )
 st.dataframe(
-    conf.rename(columns={"size": "Fights", "mean": "Favourite won"}),
+    components.as_pct(conf, ("mean",)).rename(columns={"size": "Fights", "mean": "Favourite won"}),
     hide_index=True,
     width="stretch",
-    column_config={"Favourite won": st.column_config.NumberColumn(format="percent")},
+    column_config={"Favourite won": components.pct_column()},
 )
 
 outcome_cols = ["a_ko", "a_sub", "a_dec", "b_ko", "b_sub", "b_dec"]
@@ -291,131 +284,135 @@ if known.any():
         f"{exact:.1%} of fights (always guessing the most common ending would get {common:.1%})."
     )
 
-st.subheader("Which inputs matter")
-try:
-    imp = data.query("SELECT * FROM feature_importance")
-except duckdb.Error:
-    imp = pd.DataFrame()
-if imp.empty:
-    st.info("Input importance appears after the next daily refresh.")
-else:
-    gain = float(imp["log_loss_none"].iloc[0] - imp["log_loss_all"].iloc[0])
-    model = explain.load_model(None)
-    weights = dict(zip(outcome.DIFF_FEATURES, model.win.coef_[0], strict=True)) if model else {}
-    table = pd.DataFrame(
-        {
-            "Input": imp["feature"].map(explain.factor_label),
-            "Lost if removed": (imp["log_loss_without"] - imp["log_loss_all"]) / gain,
-            "On its own": (imp["log_loss_none"] - imp["log_loss_alone"]) / gain,
-            "Accuracy on its own": imp["accuracy_alone"],
-            "Weight now": imp["feature"].map(weights),
-        }
-    ).sort_values("Lost if removed", ascending=False)
-    st.markdown(
-        "Each input's value is measured the same out-of-sample way, as a share of the model's "
-        "total improvement over a coin flip:\n"
-        "- **Lost if removed**: how much of that improvement disappears when the model is "
-        "retrained without this input. Near zero means other inputs already carry the same "
-        "information (or it adds nothing); below zero means the model does slightly better "
-        "without it.\n"
-        "- **On its own**: how much a model using only this input achieves.\n"
-        "- **Weight now**: the input's weight in today's model, per typical gap (see the Bout "
-        "page breakdown). Positive means a bigger value than the opponent helps."
-    )
-    st.altair_chart(
-        alt.Chart(table)
-        .mark_bar(cornerRadiusEnd=4, height={"band": 0.7}, color=COLORS[0])
-        .encode(
-            x=alt.X(
-                "Lost if removed:Q",
-                title="Share of improvement lost if removed",
-                axis=alt.Axis(format="%"),
-            ),
-            y=alt.Y(
-                "Input:N",
-                sort=list(table["Input"]),
-                title=None,
-                axis=alt.Axis(labelLimit=320, labelOverlap=False),
-            ),
-            tooltip=[
-                "Input:N",
-                alt.Tooltip("Lost if removed:Q", format=".1%"),
-                alt.Tooltip("On its own:Q", format=".1%"),
-                alt.Tooltip("Accuracy on its own:Q", format=".1%"),
-            ],
+st.subheader("More detail")
+with st.expander("Which inputs matter"):
+    try:
+        imp = data.query("SELECT * FROM feature_importance")
+    except duckdb.Error:
+        imp = pd.DataFrame()
+    if imp.empty:
+        st.info("Input importance appears after the next daily refresh.")
+    else:
+        gain = float(imp["log_loss_none"].iloc[0] - imp["log_loss_all"].iloc[0])
+        model = explain.load_model(None)
+        weights = dict(zip(outcome.DIFF_FEATURES, model.win.coef_[0], strict=True)) if model else {}
+        table = pd.DataFrame(
+            {
+                "Input": imp["feature"].map(explain.factor_label),
+                "Lost if removed": (imp["log_loss_without"] - imp["log_loss_all"]) / gain,
+                "On its own": (imp["log_loss_none"] - imp["log_loss_alone"]) / gain,
+                "Accuracy on its own": imp["accuracy_alone"],
+                "Weight now": imp["feature"].map(weights),
+            }
+        ).sort_values("Lost if removed", ascending=False)
+        st.markdown(
+            "Each input's value is measured the same out-of-sample way, as a share of the model's "
+            "total improvement over a coin flip:\n"
+            "- **Lost if removed**: how much of that improvement disappears when the model is "
+            "retrained without this input. Near zero means other inputs already carry the same "
+            "information (or it adds nothing); below zero means the model does slightly better "
+            "without it.\n"
+            "- **On its own**: how much a model using only this input achieves.\n"
+            "- **Weight now**: the input's weight in today's model, per typical gap (see the Bout "
+            "page breakdown). Positive means a bigger value than the opponent helps."
         )
-        .properties(height=alt.Step(28)),
-        width="stretch",
-    )
-    st.dataframe(
-        table,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Lost if removed": st.column_config.NumberColumn(format="percent"),
-            "On its own": st.column_config.NumberColumn(format="percent"),
-            "Accuracy on its own": st.column_config.NumberColumn(format="percent"),
-            "Weight now": st.column_config.NumberColumn(format="%+.2f"),
-        },
-    )
-    st.caption(
-        f"Model with every input: {imp['accuracy_all'].iloc[0]:.1%} of winners picked over "
-        f"{int(imp['n'].iloc[0]):,} fights. The model has no weigh-in weight input: fights are "
-        "compared within a division, and size enters through reach. Control time enters as "
-        "projected control seconds per round."
-    )
+        st.altair_chart(
+            alt.Chart(table)
+            .mark_bar(cornerRadiusEnd=4, height={"band": 0.7}, color=COLORS[0])
+            .encode(
+                x=alt.X(
+                    "Lost if removed:Q",
+                    title="Share of improvement lost if removed",
+                    axis=alt.Axis(format="%"),
+                ),
+                y=alt.Y(
+                    "Input:N",
+                    sort=list(table["Input"]),
+                    title=None,
+                    axis=alt.Axis(labelLimit=320, labelOverlap=False),
+                ),
+                tooltip=[
+                    "Input:N",
+                    alt.Tooltip("Lost if removed:Q", format=".1%"),
+                    alt.Tooltip("On its own:Q", format=".1%"),
+                    alt.Tooltip("Accuracy on its own:Q", format=".1%"),
+                ],
+            )
+            .properties(height=alt.Step(28)),
+            width="stretch",
+        )
+        st.dataframe(
+            components.as_pct(table, ("Lost if removed", "On its own", "Accuracy on its own")),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Lost if removed": components.pct_column(),
+                "On its own": components.pct_column(),
+                "Accuracy on its own": components.pct_column(),
+                "Weight now": st.column_config.NumberColumn(format="%+.2f"),
+            },
+        )
+        st.caption(
+            f"Model with every input: {imp['accuracy_all'].iloc[0]:.1%} of winners picked over "
+            f"{int(imp['n'].iloc[0]):,} fights. The model has no weigh-in weight input: fights are "
+            "compared within a division, and size enters through reach. Control time enters as "
+            "projected control seconds per round."
+        )
 
-st.subheader("Model vs bookmakers: was the edge real?")
-best_a = fights[["close_low", "close_high"]].max(axis=1).map(components.decimal_odds_from_american)
-best_b = (
-    fights[["opp_close_low", "opp_close_high"]]
-    .max(axis=1)
-    .map(components.decimal_odds_from_american)
-)
-rows = fights.assign(best_a=best_a, best_b=best_b).dropna(subset=["market", "best_a", "best_b"])
-if rows.empty:
-    st.caption("No fights with both closing odds and a model prediction.")
-else:
-    edge_a = rows["p"] - rows["market"]
-    pick_a = edge_a >= 0
-    edge = edge_a.abs()
-    price = np.where(pick_a, rows["best_a"], rows["best_b"])
-    won = np.where(pick_a, rows["won"] == 1, rows["won"] == 0)
-    result = pd.DataFrame(
-        {
-            "Edge": pd.cut(
-                100 * edge,
-                [0, 2.5, 5, 10, 15, 100],
-                labels=["0–2.5 pts", "2.5–5 pts", "5–10 pts", "10–15 pts", "15+ pts"],
-                include_lowest=True,
-            ),
-            "won": won,
-            "return": np.where(won, price - 1, -1.0),
-        }
+with st.expander("Did a bigger edge over the bookmakers pay?"):
+    best_a = (
+        fights[["close_low", "close_high"]].max(axis=1).map(components.decimal_odds_from_american)
     )
-    summary = (
-        result.groupby("Edge", observed=True)
-        .agg(
-            Fights=("won", "size"), **{"Won": ("won", "mean"), "Return per $1": ("return", "mean")}
+    best_b = (
+        fights[["opp_close_low", "opp_close_high"]]
+        .max(axis=1)
+        .map(components.decimal_odds_from_american)
+    )
+    rows = fights.assign(best_a=best_a, best_b=best_b).dropna(subset=["market", "best_a", "best_b"])
+    if rows.empty:
+        st.caption("No fights with both closing odds and a model prediction.")
+    else:
+        edge_a = rows["p"] - rows["market"]
+        pick_a = edge_a >= 0
+        edge = edge_a.abs()
+        price = np.where(pick_a, rows["best_a"], rows["best_b"])
+        won = np.where(pick_a, rows["won"] == 1, rows["won"] == 0)
+        result = pd.DataFrame(
+            {
+                "Edge": pd.cut(
+                    100 * edge,
+                    [0, 2.5, 5, 10, 15, 100],
+                    labels=["0–2.5 pts", "2.5–5 pts", "5–10 pts", "10–15 pts", "15+ pts"],
+                    include_lowest=True,
+                ),
+                "won": won,
+                "return": np.where(won, price - 1, -1.0),
+            }
         )
-        .reset_index()
-    )
-    st.markdown(
-        "For every past fight with closing odds: back whichever fighter the model rated higher "
-        "than the bookmakers did, at the best closing price, and group by how big that gap was."
-    )
-    st.dataframe(
-        summary,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Won": st.column_config.NumberColumn(format="percent"),
-            "Return per $1": st.column_config.NumberColumn(format="%+.3f"),
-        },
-    )
-    st.caption(
-        "A negative return means those bets lost money on average. Closing odds come from "
-        "fight-canon-db; best price is the better end of the closing range."
-    )
+        summary = (
+            result.groupby("Edge", observed=True)
+            .agg(
+                Fights=("won", "size"),
+                **{"Won": ("won", "mean"), "Return per $1": ("return", "mean")},
+            )
+            .reset_index()
+        )
+        st.markdown(
+            "For every past fight with closing odds: back whichever fighter the model rated higher "
+            "than the bookmakers did, at the best closing price, and group by how big that gap was."
+        )
+        st.dataframe(
+            components.as_pct(summary, ("Won",)),
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Won": components.pct_column(),
+                "Return per $1": st.column_config.NumberColumn(format="%+.3f"),
+            },
+        )
+        st.caption(
+            "A negative return means those bets lost money on average. Closing odds come from "
+            "fight-canon-db; best price is the better end of the closing range."
+        )
 
 components.footer(betting=True)
