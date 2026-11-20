@@ -183,17 +183,41 @@ def _decided(s: pd.DataFrame) -> pd.DataFrame:
     return s[s["won"].isin([0, 1]) & ((s["won"] + s["lost"]) == 1)]
 
 
-def _fit_win(decided: pd.DataFrame, feats: list[str]) -> tuple[StandardScaler, LogisticRegression]:
+# The win model learns more from recent fights: each training fight's weight halves every this
+# many years before the year being predicted. Walk-forward log loss 0.6367 -> 0.6360, interval
+# excluding zero, and every half-life from 6 to 12 years helped similarly, on 2020+ too; the
+# method model is better left unweighted (see NEXT_TASKS.md, 2026-11-20).
+WIN_HALF_LIFE_YEARS = 8.0
+
+
+def recency_weights(years: pd.Series, ref_year: int, half_life: float) -> np.ndarray:
+    return np.power(0.5, (ref_year - years.to_numpy(dtype=float)) / half_life)
+
+
+def _fit_win(
+    decided: pd.DataFrame, feats: list[str], sample_weight: np.ndarray | None = None
+) -> tuple[StandardScaler, LogisticRegression]:
     ws = StandardScaler(with_mean=False).fit(_matrix(decided, feats))
     win = LogisticRegression(C=0.5, fit_intercept=False, max_iter=2000)
-    win.fit(ws.transform(_matrix(decided, feats)), decided["won"].astype(int))
+    win.fit(
+        ws.transform(_matrix(decided, feats)),
+        decided["won"].astype(int),
+        sample_weight=sample_weight,
+    )
     return ws, win
 
 
 def fit(train: pd.DataFrame) -> FittedModels:
+    """Fit both models. Recency weights count back from the year after the latest training
+    fight: the test year in the walk-forward, next year for the live model."""
     train = add_matchup_diffs(train)
     decided = _decided(train)
-    ws, win = _fit_win(decided, DIFF_FEATURES)
+    ref_year = int(decided["year"].max()) + 1
+    ws, win = _fit_win(
+        decided,
+        DIFF_FEATURES,
+        recency_weights(decided["year"], ref_year, WIN_HALF_LIFE_YEARS),
+    )
 
     lab = _method_label(decided)
     m = decided[lab.notna()]

@@ -20,13 +20,14 @@ components.page("Experiments")
 st.title("Experiments")
 
 shipped = [e for e in EXPERIMENTS if e.verdict == "shipped"]
-failed = [e for e in EXPERIMENTS if e.verdict != "shipped"]
+planned = [e for e in EXPERIMENTS if e.verdict == "planned"]
+failed = [e for e in EXPERIMENTS if e.verdict not in ("shipped", "planned")]
 c = st.columns(3)
-c[0].metric("Ideas tested", len(EXPERIMENTS))
+c[0].metric("Ideas tested", len(shipped) + len(failed))
 c[1].metric("Shipped", len(shipped))
 c[2].metric(
     "Winners picked",
-    "64.0%",
+    "64.1%",
     help="Out of sample, 2012–2026. It was 60.9% before the shipped changes; the bookmakers' "
     "favourite wins 66.8%.",
 )
@@ -84,6 +85,7 @@ SHIPPED_ORDER = [
     "All-promotion rating and pro record",
     "How fighters win and lose across every promotion (method model)",
     "Rating from share of each fight won",
+    "Recency weighting: recent years count more when training",
     "Stronger opponent adjustment",
 ]
 TAGS = {
@@ -91,6 +93,7 @@ TAGS = {
     "no gain": ":gray-badge[No gain]",
     "harmful": ":red-badge[Made it worse]",
     "not tested": ":orange-badge[Not tested]",
+    "planned": ":blue-badge[Planned]",
 }
 
 
@@ -104,7 +107,10 @@ def row(e: Experiment) -> None:
 
 
 show = st.segmented_control(
-    "Show", ["All", "Didn't help", "Shipped"], default="All", label_visibility="collapsed"
+    "Show",
+    ["All", "Shipped", "Didn't help", "Planned"],
+    default="All",
+    label_visibility="collapsed",
 )
 ordered = sorted(
     shipped, key=lambda e: SHIPPED_ORDER.index(e.title) if e.title in SHIPPED_ORDER else 99
@@ -114,4 +120,7 @@ if show in ("All", "Shipped", None):
         row(e)
 if show in ("All", "Didn't help", None):
     for e in failed:
+        row(e)
+if show in ("All", "Planned", None):
+    for e in planned:
         row(e)

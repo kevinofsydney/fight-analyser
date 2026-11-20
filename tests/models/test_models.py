@@ -276,3 +276,10 @@ def test_method_pushes_add_up_to_the_log_ratio_of_two_endings(synthetic_db):
         total = c["push"].sum() + c["intercept"].iloc[0]
         ratio = probs[classes.index("win_ko")] / probs[classes.index("win_dec")]
         assert total == pytest.approx(np.log(ratio))
+
+
+def test_recency_weights_halve_every_half_life():
+    import pandas as pd
+
+    w = outcome.recency_weights(pd.Series([2026, 2018, 2010]), 2026, 8.0)
+    assert w.tolist() == pytest.approx([1.0, 0.5, 0.25])

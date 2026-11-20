@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
-Verdict = Literal["shipped", "no gain", "harmful", "not tested"]
+Verdict = Literal["shipped", "no gain", "harmful", "not tested", "planned"]
 
 
 @dataclass(frozen=True)
@@ -112,16 +112,21 @@ EXPERIMENTS: list[Experiment] = [
         headline="Nothing the model didn't already have.",
     ),
     Experiment(
-        date(2026, 11, 10),
-        "Recency weighting",
-        "Recent fights tell you more about today's UFC than fights from 2010.",
-        "Weighting training fights with a 4-year half-life did lower log loss, but pushed the "
-        "KO/TKO and decision probabilities out of calibration, which would have hidden their "
-        "labels.",
-        "0.6540 vs 0.6548 at the time; KO and decision gates failed.",
-        "harmful",
-        "Worth retrying: the method calibration problem that blocked it was fixed on 2026-11-20.",
-        headline="Slightly better, but broke calibration. Worth retrying.",
+        date(2026, 11, 20),
+        "Fighter recency: recent form over career averages",
+        "A fighter's recent fights say more about them now than fights from years ago, "
+        "especially for long careers like Dan Hooker's.",
+        "Striking, takedown, knockdown and control rates with each earlier fight's weight "
+        "halving every 1, 2 or 4 years added nothing, and neither did the gap between recent and "
+        "career rates. Decline does show up (Hooker now lands 4.5 and absorbs 5.4 significant "
+        "strikes a minute, against 4.8 and 4.9 over his career), but the ratings already move "
+        "with every result, so the model already sees it.",
+        "Recent rates, half-life 2 years: +0.0008 [−0.0006, +0.0023]. Recent minus career: "
+        "within ±0.0001, intervals spanning zero.",
+        "no gain",
+        "Form is already in the ratings.",
+        headline="Already captured by the ratings, which move with every fight.",
+        effect=(0.0008, -0.0006, 0.0023),
     ),
     Experiment(
         date(2026, 11, 10),
@@ -168,6 +173,22 @@ EXPERIMENTS: list[Experiment] = [
     # Shipped
     Experiment(
         date(2026, 11, 20),
+        "Recency weighting: recent years count more when training",
+        "The sport changes, so a 2025 fight should teach the model more than a 2012 one.",
+        "Weighting each training fight so its say halves every 8 years before the year being "
+        "predicted made the win model slightly but reliably better, on recent years too, and "
+        "every half-life from 6 to 12 years helped about the same. Weighting the method model "
+        "the same way didn't help, so it stays unweighted. The first try (10 Nov, 4-year "
+        "half-life on both models) had broken the method calibration; that problem was fixed "
+        "first.",
+        "Win log loss 0.6367 → 0.6360, change −0.0007 [−0.0013, −0.0002]; 2020+ −0.0008 "
+        "[−0.0016, −0.0001]; winners picked 64.0% → 64.1%. All calibration checks pass.",
+        "shipped",
+        headline="A small, reliable gain once the method calibration was fixed.",
+        effect=(-0.0007, -0.0013, -0.0002),
+    ),
+    Experiment(
+        date(2026, 11, 20),
         "How fighters win and lose across every promotion (method model)",
         "The KO/submission/decision model only saw UFC finish rates, so it gave Terrance "
         "McKinney (19-9, never a decision) 28% to win by decision.",
@@ -206,5 +227,24 @@ EXPERIMENTS: list[Experiment] = [
         "0.6556 → 0.6548, accuracy 60.9% → 61.2%.",
         "shipped",
         headline="A small gain.",
+    ),
+    # Planned
+    Experiment(
+        date(2026, 11, 20),
+        "Travel and home advantage, and judging on Middle East cards",
+        "Fighters do better close to home and worse after long travel. Separately, fighters from "
+        "Russia, Dagestan, the Caucasus, Central Asia and the Arab world may get favourable "
+        "judging on Middle East cards (Abu Dhabi, Riyadh, Doha, Baku).",
+        "Not run yet. Plan: (1) home advantage, as how far each fighter is from their home "
+        "country, and fighting in their own country, against the model's chance; (2) judging, "
+        "comparing judges' round scores with the round winner the stats predict, for those "
+        "fighters on Middle East cards against everywhere else. Data: event countries are known "
+        "(about 31 Middle East events); fighter nationality exists for about 84,000 fighters in "
+        "the all-promotion records but still has to be linked to UFC fighters; judges' cards "
+        "cover about 4,200 bouts. Surname endings like -ov/-ev would only be a fallback where "
+        "nationality is missing, reported separately, since they're a rough proxy.",
+        "—",
+        "planned",
+        headline="Registered; needs fighter nationality linked first.",
     ),
 ]
