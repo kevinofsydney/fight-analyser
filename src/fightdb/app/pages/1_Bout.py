@@ -25,6 +25,7 @@ from fightdb.app import (
     explain,
     fight_projection,
     hypothesis_view,
+    weigh_ins,
 )
 from fightdb.config import get_settings
 from fightdb.features.stat_meta import BY_KEY, STATS
@@ -133,6 +134,9 @@ prices = (
     else pd.DataFrame()
 )
 
+misses = data.weight_misses([str(a.fighter_id), str(b.fighter_id)])
+reviewed_through = data.weight_misses_reviewed_through()
+
 st.caption(
     f"{a.weight_class or a.division} · {int(a.scheduled_rounds) if num(a.scheduled_rounds) == num(a.scheduled_rounds) else '?'} rounds · "
     f"{a.event_name} · {components.fmt_date(a.event_date)}"
@@ -179,7 +183,10 @@ for col, side in zip(profile_cols, (a, b), strict=True):
             record,
             odds_value,
             components.fmt_stat("age_years", num(side.self_age_years)),
-            "—",
+            weigh_ins.this_bout(
+                misses, fighter_id, str(bout_id), side.event_date, reviewed_through
+            ),
+            weigh_ins.earlier(misses, fighter_id, side.event_date),
             components.fmt_stat("height_cm", num(side.self_height_cm)),
             components.fmt_stat("reach_cm", num(side.self_reach_cm)),
             str(side.self_stance).strip()
@@ -196,7 +203,8 @@ profile_table = pd.DataFrame(
             "Current pro record",
             odds_label,
             "Age at bout",
-            "Weigh-in weight",
+            "Weigh-in",
+            "Earlier weight misses",
             "Height",
             "Reach",
             "Stance",
@@ -237,6 +245,17 @@ for side in (a, b):
         st.warning(
             f"{side.fighter_name} has {int(num(side.self_ufc_fights))} prior UFC fights: rates are mostly the division average (shrinkage) and noisy."
         )
+
+missed_now = misses[
+    (misses["bout_id"] == str(bout_id)) & (misses["record_type"] == "official_miss")
+]
+if not missed_now.empty or any(
+    len(weigh_ins.official_before(misses, str(s.fighter_id), s.event_date)) >= 2 for s in (a, b)
+):
+    st.caption(
+        f"Since 2018, fighters who missed weight won {weigh_ins.MISSER_WON:.0%} of their fights; "
+        f"the closing odds expected {weigh_ins.MISSER_PRICED:.0%}. The model doesn't use weigh-ins."
+    )
 
 # --- Prediction ---
 

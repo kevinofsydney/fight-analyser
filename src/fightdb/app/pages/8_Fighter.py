@@ -13,7 +13,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from fightdb.app import components, data
+from fightdb.app import components, data, weigh_ins
 from fightdb.features.snapshots import _wear_by_day
 from fightdb.features.stat_meta import BY_KEY
 from fightdb.models import ratings
@@ -133,6 +133,22 @@ else:
     )
     st.caption("Recorded UFC exposure, not a medical diagnosis.")
 
+st.subheader("Weigh-ins")
+misses = data.weight_misses([fid])
+official = misses[misses["record_type"] == "official_miss"]
+if misses.empty:
+    st.caption("No weight misses recorded since 2018.")
+else:
+    st.markdown(
+        f"Missed weight **{len(official)}** time{'s' if len(official) != 1 else ''} since 2018."
+    )
+    st.dataframe(
+        weigh_ins.table(misses),
+        hide_index=True,
+        width="stretch",
+        column_config={"Source": st.column_config.LinkColumn("Source", display_text="report")},
+    )
+
 st.subheader("UFC fights")
 done = hist[hist["status"] == "completed"]
 fight_rows = done.sort_values("event_date", ascending=False).reset_index(drop=True)
@@ -144,6 +160,9 @@ rounds_complete = (
 absorption = wear_input[["bout_id", "opp_sig_l"]].copy()
 absorption["opp_sig_l"] = absorption["opp_sig_l"].where(rounds_complete)
 fight_rows = fight_rows.merge(absorption, on="bout_id", how="left")
+bout_misses = misses[misses["bout_id"].notna()].drop_duplicates("bout_id")
+miss_label = {r["bout_id"]: weigh_ins.describe(r) for _, r in bout_misses.iterrows()}
+fight_rows["weigh_in"] = fight_rows["bout_id"].map(miss_label).fillna("")
 fight_rows["self_elo"] = fight_rows["self_elo"].round().astype("Int64")
 shown = components.format_dates(
     fight_rows[
@@ -153,6 +172,7 @@ shown = components.format_dates(
             "opp_name",
             "result",
             "method",
+            "weigh_in",
             "opp_sig_l",
             "end_round",
             "self_elo",
@@ -162,6 +182,7 @@ shown = components.format_dates(
     dates=("event_date",),
 ).rename(
     columns={
+        "weigh_in": "Weigh-in",
         "opp_sig_l": "Sig. strikes absorbed",
         "self_elo": "Elo before",
         "self_p_win": "Model win % (out-of-sample)",
