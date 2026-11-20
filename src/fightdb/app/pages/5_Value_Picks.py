@@ -16,12 +16,12 @@ import streamlit as st
 
 from fightdb.app import components, explain, value
 
-components.page("Value picks", "🎯")
-st.title("Value picks")
+components.page("Value Picks")
+st.title("Value Picks")
 st.caption(
     "For each card: the fighters the model rates at least the chosen margin above the "
     "bookmakers' margin-free chance, the best price, and for past cards how they turned out "
-    "(a $1 stake per pick). Not betting advice."
+    "(a $1 stake per pick)."
 )
 
 all_bouts = value.bouts_with_market()
@@ -142,11 +142,7 @@ st.caption(
 )
 
 st.subheader("Every past card")
-by_card = (
-    past.groupby(["event_id", "event_name", "event_date"], as_index=False)
-    .apply(lambda g: pd.Series(value.summarise(g)), include_groups=False)
-    .sort_values("event_date", ascending=False)
-)
+by_card = value.summarise_by_card(past).sort_values("event_date", ascending=False)
 by_card = by_card[by_card["picks"] > 0]
 if by_card.empty:
     st.caption("No past picks at this edge.")
@@ -207,3 +203,5 @@ else:
             st.session_state["vp_open_event"] = chosen
             st.session_state.pop("vp_cards", None)
             st.rerun()
+
+components.footer(betting=True)

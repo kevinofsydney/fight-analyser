@@ -63,12 +63,12 @@ def test_date_formatting():
 
     from fightdb.app.components import fmt_date, format_dates
 
-    assert fmt_date(date(2027, 3, 31)) == "31st March 2027"
-    assert fmt_date(date(2027, 3, 11)) == "11th March 2027"
-    assert fmt_date(datetime(2027, 3, 4, 16, 26), with_time=True) == "4th March 2027, 4:26 PM"
+    assert fmt_date(date(2027, 3, 31)) == "31 Mar 2027"
+    assert fmt_date(date(2027, 3, 11)) == "11 Mar 2027"
+    assert fmt_date(datetime(2027, 3, 4, 16, 26), with_time=True) == "4 Mar 2027, 4:26 PM"
     assert fmt_date(pd.NaT, with_time=True) == "—"
     frame = pd.DataFrame({"event_date": [pd.Timestamp("2027-03-31")]})
-    assert format_dates(frame, dates=("event_date",)).iloc[0, 0] == "31st March 2027"
+    assert format_dates(frame, dates=("event_date",)).iloc[0, 0] == "31 Mar 2027"
     assert frame.iloc[0, 0] == pd.Timestamp("2027-03-31")
 
 

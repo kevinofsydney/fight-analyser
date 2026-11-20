@@ -149,7 +149,6 @@ def render_win_breakdown(
     st.caption(
         "Missing values count as no gap, as in training. Index values are relative to the "
         "division average (100); projected numbers are per round against this opponent. "
-        "Not betting advice."
     )
 
 
@@ -235,7 +234,7 @@ EDGE_COLUMNS = {
 EDGE_NOTE = (
     "In the backtest the bookmakers' closing lines have been more accurate than this model (see "
     "Model performance), so a large edge more often means the model is missing something than "
-    "that the price is wrong. Not betting advice."
+    "that the price is wrong."
 )
 METHOD_NAMES = {"ko": "KO/TKO", "sub": "submission", "dec": "decision"}
 _METHOD_GROUP_KEY = {"ko_tko": "ko", "sub": "sub", "dec": "dec"}

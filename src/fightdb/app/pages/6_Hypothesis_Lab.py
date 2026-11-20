@@ -21,7 +21,7 @@ from fightdb.app import components, data
 from fightdb.features.stat_meta import BY_KEY, OUTCOMES, STATS
 from fightdb.sources.units import DIVISIONS
 
-components.page("Hypothesis Lab", "🧪")
+components.page("Hypothesis Lab")
 st.title("Hypothesis Lab")
 st.caption(
     "Every bout counts twice, once from each fighter's side. A condition like "

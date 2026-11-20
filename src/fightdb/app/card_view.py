@@ -11,7 +11,33 @@ from fightdb.app import components, data, past_cards, value
 
 def load_scored() -> pd.DataFrame:
     """Every scored finished bout, newest first, with the bookmakers' chance and best prices
-    (closing line where known, else the last prices fetched before the event)."""
+    (closing line where known, else the last prices fetched before the event). Cached until the
+    database file changes."""
+    return _load_scored(data.db_mtime())
+
+
+def with_bets(scored: pd.DataFrame, bankroll: float, kelly: float) -> pd.DataFrame:
+    """`past_cards.add_bets` on every scored bout, cached per database and stake setting."""
+    return _with_bets(data.db_mtime(), bankroll, kelly)
+
+
+def load_cards() -> pd.DataFrame:
+    """`past_cards.by_card` over every scored bout, cached until the database changes."""
+    return _load_cards(data.db_mtime())
+
+
+@st.cache_data(ttl=data.TTL, show_spinner=False)
+def _load_cards(mtime: float) -> pd.DataFrame:
+    return past_cards.by_card(_load_scored(mtime))
+
+
+@st.cache_data(ttl=data.TTL, show_spinner=False)
+def _with_bets(mtime: float, bankroll: float, kelly: float) -> pd.DataFrame:
+    return past_cards.add_bets(_load_scored(mtime), bankroll=bankroll, kelly_fraction=kelly)
+
+
+@st.cache_data(ttl=data.TTL, show_spinner=False)
+def _load_scored(mtime: float) -> pd.DataFrame:
     bouts = data.query(past_cards.PAST_BOUTS_SQL + " ORDER BY a.event_date DESC")
     if bouts.empty:
         return bouts

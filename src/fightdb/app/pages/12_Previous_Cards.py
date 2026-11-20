@@ -13,8 +13,8 @@ import streamlit as st
 
 from fightdb.app import card_view, components, past_cards
 
-components.page("Previous cards", "🗓️")
-st.title("Previous cards")
+components.page("Previous Cards")
+st.title("Previous Cards")
 st.caption(
     "How the model's picks turned out, card by card. Each bout is scored by the model trained "
     "on every fight before that year, so it never saw the result. Upcoming bouts use a model "
@@ -26,7 +26,7 @@ scored = card_view.load_scored()
 if scored.empty:
     st.info("No scored past bouts yet. The model needs a daily refresh with enough history.")
     st.stop()
-cards = past_cards.by_card(scored)
+cards = card_view.load_cards()
 _pct, _counts = card_view.pct, card_view.counts
 
 
@@ -112,4 +112,4 @@ card = past_cards.add_bets(card, bankroll=bankroll, kelly_fraction=kelly)
 card_view.card_metrics(card)
 card_view.card_table(card, key=f"previous_bouts_{event_id}")
 st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
-st.caption("Model probabilities are for analysis, not betting advice.")
+components.footer(betting=True)

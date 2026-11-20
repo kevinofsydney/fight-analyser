@@ -18,8 +18,8 @@ import streamlit as st
 from fightdb.app import card_view, components, data, explain, past_cards
 from fightdb.models import outcome
 
-components.page("Model performance", "📈")
-st.title("Model performance")
+components.page("Model Performance")
+st.title("Model Performance")
 st.caption(
     "Every number here is out of sample: each fight from 2012 on was scored by a model trained "
     "only on fights from earlier years, the same way upcoming fights are scored now."
@@ -110,8 +110,9 @@ st.altair_chart(
 st.subheader("The last three cards")
 scored_all = card_view.load_scored()
 bankroll, kelly = card_view.bet_settings("performance")
-bets = past_cards.add_bets(scored_all, bankroll=bankroll, kelly_fraction=kelly)
-last_cards = past_cards.by_card(bets).head(3)
+bets = card_view.with_bets(scored_all, bankroll, kelly).copy()
+recent_ids = card_view.load_cards().head(3)["event_id"]
+last_cards = past_cards.by_card(bets[bets["event_id"].isin(recent_ids)])
 for i, ev in enumerate(last_cards.itertuples()):
     card = card_view.in_card_order(bets[bets["event_id"] == ev.event_id])
     with st.expander(
@@ -120,7 +121,7 @@ for i, ev in enumerate(last_cards.itertuples()):
         card_view.card_metrics(card)
         card_view.card_table(card, key=f"perf_card_{ev.event_id}")
 st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
-components.page_link(st, "pages/12_Previous_Cards.py", "Every earlier card", "🗓️")
+components.page_link(st, "pages/12_Previous_Cards.py", "Every earlier card")
 
 st.subheader("Betting the model")
 st.markdown(
@@ -220,7 +221,7 @@ st.dataframe(
 st.caption(
     "Prices are the better end of the closing range (fight-canon-db), or for recent cards "
     "without one, the best of the last bookmaker prices fetched before the event. Taking the "
-    "best closing price flatters both strategies a little. Hindsight analysis, not betting advice."
+    "best closing price flatters both strategies a little."
 )
 
 st.subheader("Are the percentages honest?")
@@ -414,5 +415,7 @@ else:
     )
     st.caption(
         "A negative return means those bets lost money on average. Closing odds come from "
-        "fight-canon-db; best price is the better end of the closing range. Not betting advice."
+        "fight-canon-db; best price is the better end of the closing range."
     )
+
+components.footer(betting=True)

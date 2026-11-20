@@ -16,8 +16,8 @@ import streamlit as st
 
 from fightdb.app import components, data
 
-components.page("SQL console", "🧮")
-st.title("SQL console")
+components.page("SQL")
+st.title("SQL")
 st.caption(
     "Read-only. Results are capped at 5,000 rows and 20 seconds. `bout_sides` has one row per fighter per bout."
 )

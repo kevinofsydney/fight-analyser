@@ -19,8 +19,8 @@ from fightdb.app import components, data, value
 from fightdb.config import get_settings
 from fightdb.sources.identity import is_placeholder
 
-components.page("My picks", "✍️")
-st.title("My picks")
+components.page("My Picks")
+st.title("My Picks")
 st.caption(
     "Pick a winner and say how sure you are before each card. Once the results are in, your "
     "picks are scored against the model and the bookmakers on the same fights. Picks lock when "
@@ -262,3 +262,5 @@ st.download_button(
     file_name="my_picks.csv",
     mime="text/csv",
 )
+
+components.footer(betting=True)

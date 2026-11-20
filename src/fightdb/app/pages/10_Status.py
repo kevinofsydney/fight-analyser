@@ -18,7 +18,7 @@ import streamlit as st
 from fightdb.app import components, data
 from fightdb.models import outcome
 
-components.page("Status", "🩺")
+components.page("Status")
 st.title("Status")
 
 runs = data.query(
