@@ -129,6 +129,25 @@ EXPERIMENTS: list[Experiment] = [
         effect=(0.0008, -0.0006, 0.0023),
     ),
     Experiment(
+        date(2026, 11, 20),
+        "Activity: fighting often, win or lose",
+        "An active fighter is sharper and healthier than one who sits out, even if the recent "
+        "fights were losses (Dan Hooker, 3 fights in the past year, against Brian Ortega, none).",
+        "Fighters with 0–2 fights in the past two years (any promotion) did win 2.5–3 points "
+        "less than the model expected, and those with 4+ won 1 point more, but the bookmakers "
+        "already price this almost exactly. Added to the model, fight counts over 12 or 24 "
+        "months, an 'any fight in 18 months' flag, separate recent wins and losses, and an "
+        "activity × age term all changed nothing beyond chance. The best version would move "
+        "Hooker from 38% to 41%.",
+        "Log fights in last 24 months: −0.0005 [−0.0014, +0.0003]. Fights, wins and losses in "
+        "24 months: −0.0007 [−0.0020, +0.0007]. Others within ±0.0004, intervals spanning zero. "
+        "Injuries and weight cuts aren't in the data, so they weren't tested.",
+        "no gain",
+        "Activity is mostly a sign of quality and health the ratings and prices already reflect.",
+        headline="Inactive fighters underperform a little, but the bookmakers already know.",
+        effect=(-0.0005, -0.0014, 0.0003),
+    ),
+    Experiment(
         date(2026, 11, 10),
         "Gradient boosting",
         "A tree model can find interactions a logistic regression can't.",

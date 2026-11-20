@@ -311,6 +311,30 @@ Win-model half-lives of 6, 8, 10 and 12 years all helped (−0.0008 to −0.0006
 
 **2. Fighter recency (no gain).** Recency-weighted per-minute striking, takedown, knockdown and control rates (half-life 1, 2 or 4 years, shrunk by 15 minutes), as fighter gaps on top of the win model: +0.0008 [−0.0006, +0.0023] and similar; recent-minus-career trends ±0.0001. Dan Hooker's decline is visible (landed 4.82 → 4.50, absorbed 4.94 → 5.42 a minute at a 2-year half-life) but the ratings already carry it.
 
+## Activity on 2026-11-20 (M19, no gain)
+
+`scripts/activity_experiment.py`, on the 2026-11-20 release (M14 + M18). Owner idea: an active fighter (Dan Hooker, 3 fights in the past year, all losses) should get credit over an inactive one (Brian Ortega, 455 days out). Fight days per fighter in the 12, 18 and 24 months before each bout, across all promotions (pro records plus UFC history), wins and losses counted separately. Activity only; fight-wear inputs stay out (AGENTS.md). The walk-forward uses the live recency weights and reproduces the live model (0.6360, 64.1%).
+
+| Fights in prior 24 months | Fighters | Won | Model expected | Bookmakers expected |
+|---|---|---|---|---|
+| 0 | 198 | 44.9% | 48.2% | 44.7% |
+| 1 | 897 | 43.9% | 46.8% | 46.1% |
+| 2 | 2,445 | 46.2% | 48.7% | 47.9% |
+| 3 | 3,642 | 50.5% | 49.9% | 50.2% |
+| 4+ | 6,914 | 52.0% | 51.0% | 51.3% |
+
+| Added to the win model | Log loss change (95% interval) | Accuracy |
+|---|---|---|
+| Fights, last 12 months | −0.0000 [−0.0005, +0.0004] | 64.1% |
+| Fights, last 24 months | −0.0004 [−0.0009, +0.0001] | 64.2% |
+| Log fights, last 24 months | −0.0005 [−0.0014, +0.0003] | 64.2% |
+| Fought anywhere in last 18 months | +0.0000 [−0.0009, +0.0010] | 64.4% |
+| Fights, wins and losses, last 24 months | −0.0007 [−0.0020, +0.0007] | 64.7% |
+| Fights in 24 months × years past 33 | +0.0004 [−0.0000, +0.0008] | 64.1% |
+| UFC debut flag (comparison, not activity) | −0.0009 [−0.0021, +0.0003] | 64.2% |
+
+The less active do slightly worse than the model expects, but the bookmakers already price it. A first version of the 18-month flag scored −0.0014 [−0.0029, +0.0000] only because UFC debutants (no previous UFC date) counted as inactive; counting all promotions removes it. Hooker vs Ortega moves from 38% to at most 41%. Injuries, withdrawals before 2026 and weight cuts aren't in the data.
+
 ## Registered, not run: travel and Middle East judging (F8)
 
 Owner idea 2026-11-20. (1) Home advantage and travel: distance from the fighter's home country and fighting at home, against the model's chance. (2) Judging: judges' round scores vs the stat-predicted round winner (`ratings.ROUND_WEIGHTS`) for fighters from Russia, the Caucasus, Central Asia and the Arab world on Middle East cards (about 31 events: Abu Dhabi, Riyadh, Doha, Baku) vs elsewhere. **Blocker:** `fighters.nationality` is almost empty (28 of 2,838); `pro_fighters.nationality` covers about 84,000 of 185,000 but isn't joined to UFC fighter IDs yet (24 matches by ID), so link by the M6 name rules first. Surname endings (-ov/-ev) only as a separately reported fallback. Supersedes F1.
