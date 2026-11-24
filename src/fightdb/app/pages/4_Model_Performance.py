@@ -103,8 +103,11 @@ st.altair_chart(
 
 st.subheader("The last three cards")
 scored_all = card_view.load_scored()
-bankroll, kelly = card_view.bet_settings("performance")
-bets = card_view.with_bets(scored_all, bankroll, kelly).copy()
+if components.show_bets():
+    bankroll, kelly = card_view.bet_settings("performance")
+    bets = card_view.with_bets(scored_all, bankroll, kelly).copy()
+else:
+    bets = scored_all.copy()
 recent_ids = card_view.load_cards().head(3)["event_id"]
 last_cards = past_cards.by_card(bets[bets["event_id"].isin(recent_ids)])
 for i, ev in enumerate(last_cards.itertuples()):
@@ -117,105 +120,109 @@ for i, ev in enumerate(last_cards.itertuples()):
 st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")
 components.page_link(st, "pages/12_Previous_Cards.py", "Every earlier card")
 
-st.subheader("Betting the model")
-st.caption(
-    "$100 on every pick backs whoever the model favours. Sized by edge bets only where the "
-    "model rates a fighter above the price, more when the gap is bigger (bankroll and Kelly "
-    "fraction above). Draws and no contests refund."
-)
-bets["year"] = pd.to_datetime(bets["event_date"]).dt.year
-periods = {
-    "Last three cards": bets["event_id"].isin(last_cards["event_id"]),
-    f"{bets['year'].max()} so far": bets["year"] == bets["year"].max(),
-    f"All fights since {bets['year'].min()}": pd.Series(True, index=bets.index),
-}
-money_table = pd.concat(
-    [past_cards.betting_summary(bets[mask]).assign(Period=name) for name, mask in periods.items()]
-)[["Period", "Strategy", "Bets", "Staked", "Profit", "Return"]]
-st.dataframe(
-    money_table,
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "Staked": st.column_config.NumberColumn(format="dollar"),
-        "Profit": st.column_config.NumberColumn(format="dollar"),
-        "Return": st.column_config.NumberColumn(
-            "Return per $1 staked", format="%+.3f", help="Profit divided by the amount staked."
-        ),
-    },
-)
-per_event = (
-    bets.groupby("event_date", as_index=False)[["flat_profit", "edge_profit"]]
-    .sum(min_count=1)
-    .dropna(how="all", subset=["flat_profit", "edge_profit"])
-    .sort_values("event_date")
-)
-running = per_event.assign(
-    **{
-        "$100 on every pick": per_event["flat_profit"].fillna(0).cumsum(),
-        "Sized by edge": per_event["edge_profit"].fillna(0).cumsum(),
-    }
-).melt("event_date", ["$100 on every pick", "Sized by edge"], var_name="Strategy")
-st.altair_chart(
-    alt.Chart(running, title="Running profit")
-    .mark_line(strokeWidth=2)
-    .encode(
-        x=alt.X(
-            "event_date:T",
-            title=None,
-            axis=alt.Axis(format="%Y", tickCount={"interval": "year", "step": 1}, grid=True),
-        ),
-        y=alt.Y("value:Q", title=None, axis=alt.Axis(format="$,.0f")),
-        color=alt.Color(
-            "Strategy:N",
-            scale=alt.Scale(domain=["$100 on every pick", "Sized by edge"], range=COLORS),
-            legend=alt.Legend(orient="top", title=None),
-        ),
-        tooltip=[
-            alt.Tooltip("event_date:T", title="Date", format="%-d %b %Y"),
-            "Strategy:N",
-            alt.Tooltip("value:Q", title="Running profit", format="$,.0f"),
-        ],
+if components.show_bets():
+    st.subheader("Betting the model")
+    st.caption(
+        "$100 on every pick backs whoever the model favours. Sized by edge bets only where the "
+        "model rates a fighter above the price, more when the gap is bigger (bankroll and Kelly "
+        "fraction above). Draws and no contests refund."
     )
-    .properties(height=280),
-    width="stretch",
-)
-yearly = bets.groupby("year").agg(
-    flat_profit=("flat_profit", "sum"),
-    flat_staked=("flat_stake", lambda x: x[bets.loc[x.index, "flat_profit"].notna()].sum()),
-    edge_profit=("edge_profit", "sum"),
-    edge_staked=("edge_stake", lambda x: x[bets.loc[x.index, "edge_profit"].notna()].sum()),
-)
-yearly = yearly[yearly["flat_staked"] > 0].reset_index().sort_values("year", ascending=False)
-st.dataframe(
-    pd.DataFrame(
-        {
-            "Year": yearly["year"].astype(str),
-            "$100 bets: profit": yearly["flat_profit"],
-            "$100 bets: return": yearly["flat_profit"] / yearly["flat_staked"],
-            "Edge bets: staked": yearly["edge_staked"],
-            "Edge bets: profit": yearly["edge_profit"],
-            "Edge bets: return": (yearly["edge_profit"] / yearly["edge_staked"]).where(
-                yearly["edge_staked"] > 0
-            ),
-        }
-    ),
-    hide_index=True,
-    width="stretch",
-    column_config={
-        c: st.column_config.NumberColumn(format="dollar")
-        for c in ("$100 bets: profit", "Edge bets: staked", "Edge bets: profit")
+    bets["year"] = pd.to_datetime(bets["event_date"]).dt.year
+    periods = {
+        "Last three cards": bets["event_id"].isin(last_cards["event_id"]),
+        f"{bets['year'].max()} so far": bets["year"] == bets["year"].max(),
+        f"All fights since {bets['year'].min()}": pd.Series(True, index=bets.index),
     }
-    | {
-        c: st.column_config.NumberColumn(format="%+.3f")
-        for c in ("$100 bets: return", "Edge bets: return")
-    },
-)
-st.caption(
-    "Prices are the better end of the closing range (fight-canon-db), or for recent cards "
-    "without one, the best of the last bookmaker prices fetched before the event. Taking the "
-    "best closing price flatters both strategies a little."
-)
+    money_table = pd.concat(
+        [
+            past_cards.betting_summary(bets[mask]).assign(Period=name)
+            for name, mask in periods.items()
+        ]
+    )[["Period", "Strategy", "Bets", "Staked", "Profit", "Return"]]
+    st.dataframe(
+        money_table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Staked": st.column_config.NumberColumn(format="dollar"),
+            "Profit": st.column_config.NumberColumn(format="dollar"),
+            "Return": st.column_config.NumberColumn(
+                "Return per $1 staked", format="%+.3f", help="Profit divided by the amount staked."
+            ),
+        },
+    )
+    per_event = (
+        bets.groupby("event_date", as_index=False)[["flat_profit", "edge_profit"]]
+        .sum(min_count=1)
+        .dropna(how="all", subset=["flat_profit", "edge_profit"])
+        .sort_values("event_date")
+    )
+    running = per_event.assign(
+        **{
+            "$100 on every pick": per_event["flat_profit"].fillna(0).cumsum(),
+            "Sized by edge": per_event["edge_profit"].fillna(0).cumsum(),
+        }
+    ).melt("event_date", ["$100 on every pick", "Sized by edge"], var_name="Strategy")
+    st.altair_chart(
+        alt.Chart(running, title="Running profit")
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X(
+                "event_date:T",
+                title=None,
+                axis=alt.Axis(format="%Y", tickCount={"interval": "year", "step": 1}, grid=True),
+            ),
+            y=alt.Y("value:Q", title=None, axis=alt.Axis(format="$,.0f")),
+            color=alt.Color(
+                "Strategy:N",
+                scale=alt.Scale(domain=["$100 on every pick", "Sized by edge"], range=COLORS),
+                legend=alt.Legend(orient="top", title=None),
+            ),
+            tooltip=[
+                alt.Tooltip("event_date:T", title="Date", format="%-d %b %Y"),
+                "Strategy:N",
+                alt.Tooltip("value:Q", title="Running profit", format="$,.0f"),
+            ],
+        )
+        .properties(height=280),
+        width="stretch",
+    )
+    yearly = bets.groupby("year").agg(
+        flat_profit=("flat_profit", "sum"),
+        flat_staked=("flat_stake", lambda x: x[bets.loc[x.index, "flat_profit"].notna()].sum()),
+        edge_profit=("edge_profit", "sum"),
+        edge_staked=("edge_stake", lambda x: x[bets.loc[x.index, "edge_profit"].notna()].sum()),
+    )
+    yearly = yearly[yearly["flat_staked"] > 0].reset_index().sort_values("year", ascending=False)
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Year": yearly["year"].astype(str),
+                "$100 bets: profit": yearly["flat_profit"],
+                "$100 bets: return": yearly["flat_profit"] / yearly["flat_staked"],
+                "Edge bets: staked": yearly["edge_staked"],
+                "Edge bets: profit": yearly["edge_profit"],
+                "Edge bets: return": (yearly["edge_profit"] / yearly["edge_staked"]).where(
+                    yearly["edge_staked"] > 0
+                ),
+            }
+        ),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            c: st.column_config.NumberColumn(format="dollar")
+            for c in ("$100 bets: profit", "Edge bets: staked", "Edge bets: profit")
+        }
+        | {
+            c: st.column_config.NumberColumn(format="%+.3f")
+            for c in ("$100 bets: return", "Edge bets: return")
+        },
+    )
+    st.caption(
+        "Prices are the better end of the closing range (fight-canon-db), or for recent cards "
+        "without one, the best of the last bookmaker prices fetched before the event. Taking the "
+        "best closing price flatters both strategies a little."
+    )
 
 st.subheader("Are the percentages honest?")
 st.caption(
@@ -359,60 +366,65 @@ with st.expander("Which inputs matter"):
             "projected control seconds per round."
         )
 
-with st.expander("Did a bigger edge over the bookmakers pay?"):
-    best_a = (
-        fights[["close_low", "close_high"]].max(axis=1).map(components.decimal_odds_from_american)
-    )
-    best_b = (
-        fights[["opp_close_low", "opp_close_high"]]
-        .max(axis=1)
-        .map(components.decimal_odds_from_american)
-    )
-    rows = fights.assign(best_a=best_a, best_b=best_b).dropna(subset=["market", "best_a", "best_b"])
-    if rows.empty:
-        st.caption("No fights with both closing odds and a model prediction.")
-    else:
-        edge_a = rows["p"] - rows["market"]
-        pick_a = edge_a >= 0
-        edge = edge_a.abs()
-        price = np.where(pick_a, rows["best_a"], rows["best_b"])
-        won = np.where(pick_a, rows["won"] == 1, rows["won"] == 0)
-        result = pd.DataFrame(
-            {
-                "Edge": pd.cut(
-                    100 * edge,
-                    [0, 2.5, 5, 10, 15, 100],
-                    labels=["0–2.5 pts", "2.5–5 pts", "5–10 pts", "10–15 pts", "15+ pts"],
-                    include_lowest=True,
-                ),
-                "won": won,
-                "return": np.where(won, price - 1, -1.0),
-            }
+if components.show_bets():
+    with st.expander("Did a bigger edge over the bookmakers pay?"):
+        best_a = (
+            fights[["close_low", "close_high"]]
+            .max(axis=1)
+            .map(components.decimal_odds_from_american)
         )
-        summary = (
-            result.groupby("Edge", observed=True)
-            .agg(
-                Fights=("won", "size"),
-                **{"Won": ("won", "mean"), "Return per $1": ("return", "mean")},
+        best_b = (
+            fights[["opp_close_low", "opp_close_high"]]
+            .max(axis=1)
+            .map(components.decimal_odds_from_american)
+        )
+        rows = fights.assign(best_a=best_a, best_b=best_b).dropna(
+            subset=["market", "best_a", "best_b"]
+        )
+        if rows.empty:
+            st.caption("No fights with both closing odds and a model prediction.")
+        else:
+            edge_a = rows["p"] - rows["market"]
+            pick_a = edge_a >= 0
+            edge = edge_a.abs()
+            price = np.where(pick_a, rows["best_a"], rows["best_b"])
+            won = np.where(pick_a, rows["won"] == 1, rows["won"] == 0)
+            result = pd.DataFrame(
+                {
+                    "Edge": pd.cut(
+                        100 * edge,
+                        [0, 2.5, 5, 10, 15, 100],
+                        labels=["0–2.5 pts", "2.5–5 pts", "5–10 pts", "10–15 pts", "15+ pts"],
+                        include_lowest=True,
+                    ),
+                    "won": won,
+                    "return": np.where(won, price - 1, -1.0),
+                }
             )
-            .reset_index()
-        )
-        st.markdown(
-            "For every past fight with closing odds: back whichever fighter the model rated higher "
-            "than the bookmakers did, at the best closing price, and group by how big that gap was."
-        )
-        st.dataframe(
-            components.as_pct(summary, ("Won",)),
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Won": components.pct_column(),
-                "Return per $1": st.column_config.NumberColumn(format="%+.3f"),
-            },
-        )
-        st.caption(
-            "A negative return means those bets lost money on average. Closing odds come from "
-            "fight-canon-db; best price is the better end of the closing range."
-        )
+            summary = (
+                result.groupby("Edge", observed=True)
+                .agg(
+                    Fights=("won", "size"),
+                    **{"Won": ("won", "mean"), "Return per $1": ("return", "mean")},
+                )
+                .reset_index()
+            )
+            st.markdown(
+                "For every past fight with closing odds: back whichever fighter the model rated higher "
+                "than the bookmakers did, at the best closing price, and group by how big that gap was."
+            )
+            st.dataframe(
+                components.as_pct(summary, ("Won",)),
+                hide_index=True,
+                width="stretch",
+                column_config={
+                    "Won": components.pct_column(),
+                    "Return per $1": st.column_config.NumberColumn(format="%+.3f"),
+                },
+            )
+            st.caption(
+                "A negative return means those bets lost money on average. Closing odds come from "
+                "fight-canon-db; best price is the better end of the closing range."
+            )
 
 components.footer(betting=True)

@@ -7,7 +7,7 @@ A personal UFC analysis app. It keeps every UFC fight since the 1990s in a local
 - **Test your own ideas:** "do fighters 8+ years older lose more often at lightweight?" with proper sample sizes and confidence intervals.
 - **Track how it's doing:** card-by-card results, betting results and calibration, all out of sample.
 
-**Live app:** https://fight-analyser.streamlit.app/ (password-protected).
+**Live app:** https://fight-analyser.streamlit.app/ (the analysis pages are public; betting tools, picks, SQL and Status need the owner password).
 
 ## What's in the app
 

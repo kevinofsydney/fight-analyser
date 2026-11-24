@@ -143,7 +143,7 @@ The Bout page links to the Daily refresh workflow: choose **Run workflow** there
 4. **Advanced settings → Secrets** (TOML format; this is stored by Streamlit, not in git):
    ```toml
    DATA_RELEASE_URL = "https://github.com/kevinofsydney/fight-analyser/releases/download/data-latest/fightdb.duckdb"
-   # APP_PASSWORD = "optional-shared-password"
+   # APP_PASSWORD = "optional-owner-password"  # locks betting tools, picks, SQL and Status; analysis pages stay public
    ```
 5. **Deploy.** You'll get a `*.streamlit.app` URL. (This project's app: https://fight-analyser.streamlit.app/.)
 

@@ -20,6 +20,33 @@ from fightdb.features.stat_meta import BY_KEY
 CM_PER_IN = 2.54
 
 
+# Pages anyone can open when APP_PASSWORD is set. The rest write shared data (My Picks), run
+# arbitrary queries (SQL) or are betting and operations tools, so they need the password.
+PUBLIC_PAGES = frozenset(
+    {
+        "About",
+        "Fight Cards",
+        "Previous Cards",
+        "Bout",
+        "Bout Search",
+        "Matchup",
+        "Fighter",
+        "Model Performance",
+        "Experiments",
+    }
+)
+
+
+def is_owner() -> bool:
+    """True when no password is configured, or this session has entered it."""
+    return not get_settings().app_password or bool(st.session_state.get("auth_ok"))
+
+
+def show_bets() -> bool:
+    """Bet suggestions and betting results are for the owner; public visitors see odds only."""
+    return is_owner()
+
+
 def page(title: str, icon: str | None = None) -> None:
     """Page setup. `icon` is ignored: every page shares one tab icon, and nothing decorative is
     shown in the page itself."""
@@ -27,7 +54,9 @@ def page(title: str, icon: str | None = None) -> None:
     # Streamlit logs uncaught page exceptions on a non-propagating logger; catch them there too.
     errorlog.install("app", "streamlit.error_util")
     errorlog.bind(page=title, query=dict(st.query_params))
-    _password_gate()
+    if title not in PUBLIC_PAGES and not is_owner():
+        login_form()
+        st.stop()
     if not data.db_ready():
         st.title(title)
         st.warning("No database yet. Run `make backfill` (or the GitHub Actions refresh) first.")
@@ -35,18 +64,22 @@ def page(title: str, icon: str | None = None) -> None:
     _freshness_sidebar()
 
 
-def _password_gate() -> None:
+def login_form() -> None:
+    """Owner password form. A correct password unlocks every page for this session."""
+    st.title("Owner login")
+    st.caption("The betting tools, personal picks, SQL console and status page need the password.")
     password = get_settings().app_password
-    if not password or st.session_state.get("auth_ok"):
-        return
-    st.title("Fight Analyser")
     entered = st.text_input("Password", type="password")
     if entered and hmac.compare_digest(entered, password):
         st.session_state["auth_ok"] = True
         st.rerun()
     elif entered:
         st.error("Wrong password")
-    st.stop()
+
+
+def login_page() -> None:
+    st.set_page_config(page_title="Owner login · Fight Analyser", page_icon="🥊", layout="wide")
+    login_form()
 
 
 def _freshness_sidebar() -> None:
@@ -60,7 +93,8 @@ def _freshness_sidebar() -> None:
         st.caption(f"Data updated {fmt_date(finished, with_time=True)} UTC")
         if age_h > get_settings().stale_after_hours:
             st.warning(
-                f"Data is {age_h:.0f} hours old. The daily refresh may be failing; see Status."
+                f"Data is {age_h:.0f} hours old. The daily refresh may be failing"
+                + ("; see Status." if is_owner() else ".")
             )
 
 
