@@ -79,7 +79,7 @@ with st.container():
                         "model",
                         "age_gap",
                         "reach_gap",
-                        "opportunity",
+                        *(["opportunity"] if components.show_bets() else []),
                     ]
                 ],
                 key=f"card_{ev.event_id}",

@@ -107,8 +107,9 @@ event_id = st.selectbox("Card", list(labels), format_func=labels.get, key="previ
 
 card = card_view.in_card_order(scored[scored["event_id"] == event_id])
 st.subheader(labels[event_id])
-bankroll, kelly = card_view.bet_settings("previous")
-card = past_cards.add_bets(card, bankroll=bankroll, kelly_fraction=kelly)
+if components.show_bets():
+    bankroll, kelly = card_view.bet_settings("previous")
+    card = past_cards.add_bets(card, bankroll=bankroll, kelly_fraction=kelly)
 card_view.card_metrics(card)
 card_view.card_table(card, key=f"previous_bouts_{event_id}")
 st.caption(f"{components.NAV_HINT} Title and five-round bouts first.")

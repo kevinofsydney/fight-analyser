@@ -746,3 +746,97 @@ def test_experiment_log_is_complete():
     assert {"shipped", "no gain"} <= verdicts
     for e in EXPERIMENTS:
         assert e.title and e.idea and e.found and e.numbers
+
+
+@pytest.fixture
+def upcoming_db(db, tmp_path, monkeypatch):
+    """A copy of the test DB with one priced upcoming bout; yields its bout ID."""
+    import shutil
+
+    import duckdb
+
+    from fightdb.pipeline.odds import init_table
+
+    path = tmp_path / "public.duckdb"
+    shutil.copyfile(db, path)
+    con = duckdb.connect(str(path))
+    event_id, bout_id, fighter_a, fighter_b = con.execute(
+        """SELECT b.event_id, b.bout_id, b.fighter_a_id, b.fighter_b_id FROM bouts b
+           JOIN bout_sides s ON s.bout_id = b.bout_id AND s.fighter_id = b.fighter_a_id
+           WHERE s.self_p_win IS NOT NULL LIMIT 1"""
+    ).fetchone()
+    con.execute(
+        "UPDATE events SET status='upcoming', date = current_date + 7 WHERE event_id = ?",
+        [event_id],
+    )
+    con.execute("UPDATE bout_sides SET status='scheduled' WHERE bout_id = ?", [bout_id])
+    init_table(con)
+    con.execute(
+        "INSERT INTO upcoming_odds VALUES (?, ?, 'book', 'Example Book', 1.75, NULL, now()::TIMESTAMP), (?, ?, 'book', 'Example Book', 2.15, NULL, now()::TIMESTAMP)",
+        [bout_id, fighter_a, bout_id, fighter_b],
+    )
+    con.close()
+    monkeypatch.setenv("DB_PATH", str(path))
+    monkeypatch.setenv("APP_PASSWORD", "test-password")
+    get_settings.cache_clear()
+    yield bout_id
+    get_settings.cache_clear()
+
+
+def _run(page: str, owner: bool = False, **state) -> AppTest:
+    at = AppTest.from_file(str(APP / page), default_timeout=120)
+    if owner:
+        at.session_state["auth_ok"] = True
+    for key, value in state.items():
+        at.session_state[key] = value
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def test_visitor_lands_on_about(upcoming_db):
+    at = _run("Home.py")
+    assert at.title[0].value == "Fight Analyser"
+    assert at.metric[0].label == "UFC fights"
+
+
+@pytest.mark.parametrize(
+    "page",
+    ["5_Value_Picks.py", "11_My_Picks.py", "6_Hypothesis_Lab.py", "9_SQL.py", "10_Status.py"],
+)
+def test_private_pages_ask_visitors_for_the_password(upcoming_db, page):
+    at = _run(f"pages/{page}")
+    assert [t.value for t in at.title] == ["Owner login"]
+    assert not at.dataframe
+
+
+def test_password_unlocks_private_pages(upcoming_db):
+    at = AppTest.from_file(str(APP / "pages" / "9_SQL.py"), default_timeout=120)
+    at.run()
+    at.text_input[0].input("test-password").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["auth_ok"]
+    assert at.title[0].value == "SQL"
+
+
+def test_visitors_see_odds_but_not_bets(upcoming_db):
+    bout = _run("pages/1_Bout.py", bout_id=upcoming_db)
+    assert any("Bookmaker" in df.value.columns for df in bout.dataframe)
+    assert not any("Why" in df.value.columns for df in bout.dataframe)
+    assert "**Suggested bets**" not in [m.value for m in bout.markdown]
+
+    cards = _run("pages/0_Fight_Cards.py")
+    assert cards.dataframe and not any("opportunity" in df.value.columns for df in cards.dataframe)
+
+    perf = _run("pages/4_Model_Performance.py")
+    assert "Betting the model" not in [s.value for s in perf.subheader]
+    assert not any("edge_profit" in str(df.value.columns) for df in perf.dataframe)
+
+
+def test_owner_sees_bets(upcoming_db):
+    bout = _run("pages/1_Bout.py", owner=True, bout_id=upcoming_db)
+    assert any("Why" in df.value.columns for df in bout.dataframe)
+    cards = _run("pages/0_Fight_Cards.py", owner=True)
+    assert any("opportunity" in df.value.columns for df in cards.dataframe)
+    perf = _run("pages/4_Model_Performance.py", owner=True)
+    assert "Betting the model" in [s.value for s in perf.subheader]

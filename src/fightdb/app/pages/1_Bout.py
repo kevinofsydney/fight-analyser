@@ -362,7 +362,7 @@ if a.status == "completed":
 # --- Betting ---
 
 # --- Market odds ---------------------------------------------------------------------------
-st.subheader("Betting")
+st.subheader("Betting" if components.show_bets() else "Odds")
 st.markdown("**Odds**")
 if a.status == "completed":
     odds_rows = []
@@ -503,7 +503,7 @@ if not history.empty:
         + (" Movement appears as more fetches are recorded." if polls < 2 else "")
     )
 
-if a.status == "scheduled":
+if a.status == "scheduled" and components.show_bets():
     st.link_button(
         "Refresh odds via GitHub",
         "https://github.com/kevinofsydney/fight-analyser/actions/workflows/refresh.yml",
@@ -512,78 +512,79 @@ if a.status == "scheduled":
 
 # --- Matchup projections -------------------------------------------------------------------
 # --- Bet suggestions --------------------------------------------------------------------------
-st.markdown("**Suggested bets**")
-if a.status != "scheduled":
-    st.caption("Suggestions are for upcoming bouts only.")
-else:
-    unit = st.number_input(
-        "1 unit ($)", min_value=1, max_value=10_000, value=50, step=5, key="bet_unit"
-    )
-    feed_odds: dict[str, float] = {}
-    if not prices.empty:
-        mv = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
-        if mv is not None:
-            feed_odds = {
-                str(a.fighter_name): float(mv.loc[str(a.fighter_id), "best_odds"]),
-                str(b.fighter_name): float(mv.loc[str(b.fighter_id), "best_odds"]),
-            }
-    picks = bet_recs.selections(a, b)
-    grid = pd.DataFrame(
-        {
-            "Market": [x.market for x in picks],
-            "Selection": [x.selection for x in picks],
-            "Model chance": [100 * x.p for x in picks],
-            "Fair odds": [1 / x.p if x.p > 0 else math.nan for x in picks],
-            "Odds": [
-                feed_odds.get(x.selection, math.nan) if x.market == "Moneyline" else math.nan
-                for x in picks
-            ],
-        }
-    )
-    st.caption("Moneyline prices come from the feed. For props, type the odds you're offered.")
-    edited = st.data_editor(
-        grid,
-        hide_index=True,
-        width="stretch",
-        disabled=["Market", "Selection", "Model chance", "Fair odds"],
-        key=f"bet_odds_{bout_id}",
-        column_config={
-            "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
-            "Fair odds": st.column_config.NumberColumn(
-                format="%.2f", help="1 ÷ model chance: the price at which a bet breaks even."
-            ),
-            "Odds": st.column_config.NumberColumn(
-                "Odds (decimal)", min_value=1.01, max_value=1000.0, format="%.2f"
-            ),
-        },
-    )
-    rows = []
-    for x, odds in zip(picks, edited["Odds"], strict=True):
-        ok = True if x.method is None else bool(levels_ok.get(x.method, False))
-        units, why = bet_recs.recommend(x.p, float(odds) if pd.notna(odds) else math.nan, ok)
-        rows.append(
+if components.show_bets():
+    st.markdown("**Suggested bets**")
+    if a.status != "scheduled":
+        st.caption("Suggestions are for upcoming bouts only.")
+    else:
+        unit = st.number_input(
+            "1 unit ($)", min_value=1, max_value=10_000, value=50, step=5, key="bet_unit"
+        )
+        feed_odds: dict[str, float] = {}
+        if not prices.empty:
+            mv = explain.market_view(prices, [str(a.fighter_id), str(b.fighter_id)])
+            if mv is not None:
+                feed_odds = {
+                    str(a.fighter_name): float(mv.loc[str(a.fighter_id), "best_odds"]),
+                    str(b.fighter_name): float(mv.loc[str(b.fighter_id), "best_odds"]),
+                }
+        picks = bet_recs.selections(a, b)
+        grid = pd.DataFrame(
             {
-                "Market": x.market,
-                "Selection": x.selection,
-                "Odds": "No odds found" if pd.isna(odds) else f"{float(odds):.2f}",
-                "Stake": f"{units:g} units (${units * unit:,.2f})" if units else "—",
-                "Why": why,
+                "Market": [x.market for x in picks],
+                "Selection": [x.selection for x in picks],
+                "Model chance": [100 * x.p for x in picks],
+                "Fair odds": [1 / x.p if x.p > 0 else math.nan for x in picks],
+                "Odds": [
+                    feed_odds.get(x.selection, math.nan) if x.market == "Moneyline" else math.nan
+                    for x in picks
+                ],
             }
         )
-    recs = pd.DataFrame(rows)
-    bets = recs[recs["Stake"] != "—"]
-    if bets.empty:
-        st.info("No bet: none of the priced markets clears the minimum edge.")
-    else:
-        for _, r in bets.iterrows():
-            st.success(f"**{r['Selection']}** ({r['Market']}) at {r['Odds']}: {r['Stake']}")
-    with st.expander("Every market"):
-        st.dataframe(recs, hide_index=True, width="stretch")
-    st.caption(
-        f"Suggested when the expected return is at least {bet_recs.MIN_EDGE:.0%}. Stakes are "
-        f"quarter Kelly on {bet_recs.BANKROLL_UNITS:.0f} units, at most "
-        f"{bet_recs.MAX_UNITS:g}. No round bets: the model doesn't predict the round."
-    )
+        st.caption("Moneyline prices come from the feed. For props, type the odds you're offered.")
+        edited = st.data_editor(
+            grid,
+            hide_index=True,
+            width="stretch",
+            disabled=["Market", "Selection", "Model chance", "Fair odds"],
+            key=f"bet_odds_{bout_id}",
+            column_config={
+                "Model chance": st.column_config.NumberColumn(format="%.0f%%"),
+                "Fair odds": st.column_config.NumberColumn(
+                    format="%.2f", help="1 ÷ model chance: the price at which a bet breaks even."
+                ),
+                "Odds": st.column_config.NumberColumn(
+                    "Odds (decimal)", min_value=1.01, max_value=1000.0, format="%.2f"
+                ),
+            },
+        )
+        rows = []
+        for x, odds in zip(picks, edited["Odds"], strict=True):
+            ok = True if x.method is None else bool(levels_ok.get(x.method, False))
+            units, why = bet_recs.recommend(x.p, float(odds) if pd.notna(odds) else math.nan, ok)
+            rows.append(
+                {
+                    "Market": x.market,
+                    "Selection": x.selection,
+                    "Odds": "No odds found" if pd.isna(odds) else f"{float(odds):.2f}",
+                    "Stake": f"{units:g} units (${units * unit:,.2f})" if units else "—",
+                    "Why": why,
+                }
+            )
+        recs = pd.DataFrame(rows)
+        bets = recs[recs["Stake"] != "—"]
+        if bets.empty:
+            st.info("No bet: none of the priced markets clears the minimum edge.")
+        else:
+            for _, r in bets.iterrows():
+                st.success(f"**{r['Selection']}** ({r['Market']}) at {r['Odds']}: {r['Stake']}")
+        with st.expander("Every market"):
+            st.dataframe(recs, hide_index=True, width="stretch")
+        st.caption(
+            f"Suggested when the expected return is at least {bet_recs.MIN_EDGE:.0%}. Stakes are "
+            f"quarter Kelly on {bet_recs.BANKROLL_UNITS:.0f} units, at most "
+            f"{bet_recs.MAX_UNITS:g}. No round bets: the model doesn't predict the round."
+        )
 
 
 # --- Expected fight stats ---

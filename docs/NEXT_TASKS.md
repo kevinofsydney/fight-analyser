@@ -361,6 +361,10 @@ Win model (2019+): this fight's miss +0.0002 [−0.0011, +0.0015], earlier misse
 
 **On screen (M21).** The Bout page's profile table shows each fighter's weigh-in for that bout ("Missed by 4.2 lb", or "No miss recorded" only for cards up to the list's latest card, else "—") and their official misses before it. A one-line note gives the 2018+ result (missers won 43%, closing odds expected 47%) when someone missed or has 2+ earlier misses. The Fighter page has a Weigh-ins list with source links and a Weigh-in column in the fight history. Not a model input.
 
+## Public showcase on 2026-11-24 (M22)
+
+The live app opens to visitors without the password, for recruiters. With `APP_PASSWORD` set, anyone can see About (the new landing page), Fight Cards, Previous Cards, Bout, Bout Search, Matchup, Fighter, Model Performance and Experiments. Value Picks, My Picks, Hypothesis Lab, Saved Hypotheses, SQL and Status still need the password, through an **Owner login** entry in the sidebar. Visitors see bookmaker odds and the model-vs-market table, but not bet suggestions, bet-opportunity stars, edge-sized bets or betting results. The list of public pages is `components.PUBLIC_PAGES`. With no password set, every page is open, as before.
+
 ## Registered, not run: travel and Middle East judging (F8)
 
 Owner idea 2026-11-20. (1) Home advantage and travel: distance from the fighter's home country and fighting at home, against the model's chance. (2) Judging: judges' round scores vs the stat-predicted round winner (`ratings.ROUND_WEIGHTS`) for fighters from Russia, the Caucasus, Central Asia and the Arab world on Middle East cards (about 31 events: Abu Dhabi, Riyadh, Doha, Baku) vs elsewhere. **Blocker:** `fighters.nationality` is almost empty (28 of 2,838); `pro_fighters.nationality` covers about 84,000 of 185,000 but isn't joined to UFC fighter IDs yet (24 matches by ID), so link by the M6 name rules first. Surname endings (-ov/-ev) only as a separately reported fallback. Supersedes F1.
